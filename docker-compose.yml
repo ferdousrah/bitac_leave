@@ -13,8 +13,13 @@ services:
       dockerfile: Dockerfile
     image: bitac-leave:latest
     restart: unless-stopped
-    ports:
-      - "${APP_PORT:-8080}:80"
+    # Coolify's Traefik proxy handles external routing via domain labels — we
+    # only need to `expose` the internal Apache port so the proxy can reach it.
+    # Do NOT use `ports:` here or it'll clash with Traefik on host :80.
+    # For plain local `docker compose up` use `docker compose --profile local up`
+    # or map manually.
+    expose:
+      - "80"
     environment:
       DB_HOST: db
       DB_PORT: 3306
