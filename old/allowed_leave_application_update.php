@@ -1,0 +1,626 @@
+<?php
+include('header.php');
+
+$dataID = $_GET['dataID'];
+
+$isApproved = $_GET['isApproved'];
+
+$leaveApplicationID = $_GET['leaveApplicationID'];
+
+$getAllLeaveTypesQ = mysqli_query($con, "select * from leave_types");
+
+$getLeaveApplicationDetailsQ = mysqli_query($con, "select * from leave_applications where dataID='$leaveApplicationID'");
+$getLeaveApplicationDetailsQRW = mysqli_fetch_assoc($getLeaveApplicationDetailsQ);
+
+$getEmployeeDetailsQ = mysqli_query($con, "select * from employee_list where id='$getLeaveApplicationDetailsQRW[applicantID]'");
+$getEmployeeDetailsQW = mysqli_fetch_assoc($getEmployeeDetailsQ);
+
+$getDesignationDetailsQ = mysqli_query($con, "select * from job_title where id='$getEmployeeDetailsQW[designation]'");
+$getDesignationDetailsQRW = mysqli_fetch_assoc($getDesignationDetailsQ);
+
+$getApplicgDetailsDesigQ = mysqli_query($con, "select * from organization where id='$getEmployeeDetailsQW[organization_id]'");
+$getApplicgDetailsDesigQRW = mysqli_fetch_assoc($getApplicgDetailsDesigQ);
+
+$getSectionDetailsQ = mysqli_query($con, "select * from sections where id='$getEmployeeDetailsQW[section_id]'");
+$getSectionDetailsQRW = mysqli_fetch_assoc($getSectionDetailsQ);
+
+$getLeaveTypeQ = mysqli_query($con, "select * from leave_types where leaveID='$getLeaveApplicationDetailsQRW[leaveType]'");
+$getLeaveTypeQRW = mysqli_fetch_assoc($getLeaveTypeQ);
+
+
+//$dateDiff = dateDiffInDays($getLeaveApplicationDetailsQRW['dateFrom'], $getLeaveApplicationDetailsQRW['dateTo']) + 1;
+
+
+function Bengali_DTN($NRS){
+	$englDTN = array
+			('1','2','3','4','5','6','7','8','9','0',
+			'Saturday','Sunday','Monday','Tuesday','Wednesday','Thursday','Friday',
+			'Sat','Sun','Mon','Tue','Wed','Thu','Fri',
+			'am','pm','at','st','nd','rd','th',
+			'January','February','March','April','May','June','July','August','September','October','November','December',
+			'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec');
+			$bangDTN = array
+			('১','২','৩','৪','৫','৬','৭','৮','৯','০',
+			'শনিবার','রবিবার','সোমবার','মঙ্গলবার','বুধবার','বৃহস্পতিবার','শুক্রবার',
+			'শনি','রবি','সোম','মঙ্গল','বুধ','বৃহঃ','শুক্র',
+			'পূর্বাহ্ণ','অপরাহ্ণ','','','','','',
+			'জানুয়ারি','ফেব্রুয়ারি','মার্চ','এপ্রিল','মে','জুন','জুলাই','আগস্ট','সেপ্টেম্বর','অক্টোবর','নভেম্বর','ডিসেম্বর',
+			'জানু','ফেব্রু','মার্চ','এপ্রি','মে','জুন','জুলা','আগ','সেপ্টে','অক্টো','নভে','ডিসে');
+			$converted = str_replace($bangDTN, $englDTN, $NRS);
+			return $converted; 
+			}
+
+$getLeaveTemplatesQ = mysqli_query($con, "select * from leave_templates where templateType=2");
+
+
+
+if($getLeaveApplicationDetailsQRW['approvedDateFrom'] != ''){
+
+	$aDateFrom = $getLeaveApplicationDetailsQRW['approvedDateFrom'];
+
+}else{
+
+	$aDateFrom = $getLeaveApplicationDetailsQRW['dateFrom'];
+
+}
+
+
+if($getLeaveApplicationDetailsQRW['approvedDateTo'] != ''){
+
+	$aDateTo = $getLeaveApplicationDetailsQRW['approvedDateTo'];
+
+}else{
+
+	$aDateTo = $getLeaveApplicationDetailsQRW['dateTo'];
+
+}
+
+
+$dateDiff = dateDiffInDays($aDateFrom, $aDateTo) + 1;
+
+$reqDateDiff = dateDiffInDays($getLeaveApplicationDetailsQRW['dateFrom'], $getLeaveApplicationDetailsQRW['dateTo']) + 1;
+
+
+// copy to
+
+$getEmployeeListQ4 = mysqli_query($con, "select * from employee_list where employment_status=1");
+
+
+$getApprovalPersonsQ = mysqli_query($con, "select * from leave_notice_copy where applicationID='$leaveApplicationID' order by serial asc");
+
+
+$getAllLeaveTypesQ2 = mysqli_query($con, "select * from leave_types");
+
+
+?>
+
+
+
+          <div class="main-panel">
+        <div class="main-content">
+          <div class="content-wrapper">
+		  <!--Invoice template starts-->
+    <div class="row">
+    <div class="col-md-12">
+
+	
+	
+	</div>
+	</div>
+
+    <div class="row">
+    <div class="col-md-10">
+        <h4>অনুমোদিত ছুটি সম্পাদনা </h4>
+    </div>
+	<div class="col-md-2">
+        <!--<button onClick="window.location='add_new_instructor_form?menuslug=<?php echo $_GET['menuslug']; ?>'" type="button" class="btn mr-1 mb-1 btn-outline-success"><i class="fa fa-plus"></i> Add New</button> $getLeaveApplicationDetailsQRW -->
+    </div>
+</div>
+<section class="invoice-template">
+    <div class="card">
+        <div class="card-body p-3">
+            <div id="invoice-template" class="card-block">
+
+
+				<form class="form-login" name="form" id="form" >
+					<input type="hidden" name="dataID" value="<?php echo $dataID; ?>" />
+					<input type="hidden" name="isApproved" value="<?php echo $isApproved; ?>" />
+					<input type="hidden" name="leaveApplicationID" value="<?php echo $leaveApplicationID; ?>" />
+
+	                    	<div class="form-body">
+
+								<div class="form-group row">
+	                            	<label class="col-md-3 label-control"> </label>
+		                            <div class="col-md-9">
+										
+										<?php if($getLeaveApplicationDetailsQRW['applicationType'] == 1){ ?>
+
+										<span class="badge badge-success">নিয়মিত ছুটির আবেদন</span>
+
+										<?php }else if($getLeaveApplicationDetailsQRW['applicationType'] == 2){ ?>
+
+										<span class="badge badge-danger" style="font-size: 18px;">অনুপস্থিতকালের জন্য ছুটির আবেদন</span>
+
+										<?php } ?>
+										
+		                            </div>
+		                        </div>
+			                    
+								<div class="form-group row">
+	                            	<label class="col-md-3 label-control" for="employeeID">আবেদনকারী: </label>
+		                            <div class="col-md-9">
+										
+		                            		<?php echo $getEmployeeDetailsQW['employee_name']; ?>, <?php echo $getDesignationDetailsQRW['job_title_name']; ?>, 
+	 <?php echo $getSectionDetailsQRW['section_name']; ?>, <?php echo $getApplicgDetailsDesigQRW['organization_name']; ?>&nbsp;&nbsp;<a href="employee_leave_history?employeeID=<?php echo $getLeaveApplicationDetailsQRW['applicantID']; ?>" target="_blank"><img height="40" src="dashboard-icons/history.png" /></a>
+										
+		                            </div>
+		                        </div>
+
+
+
+							<div class="form-group row">
+	                            	<label class="col-md-3 label-control" for="leaveType">চাহিত ছুটির ধরণ </label>
+		                            <div class="col-md-9">
+										
+		                            		<select class="form-control" name="leaveType" id="leaveType" required>
+												<option value=''></option>
+												<?php
+												  while($lRow=mysqli_fetch_array($getAllLeaveTypesQ)){
+												?>
+
+												<option <?php if($getLeaveApplicationDetailsQRW['leaveType'] == $lRow['leaveID']){ echo "selected='selected'"; } ?> value='<?php echo $lRow['leaveID']; ?>'><?php echo $lRow['leaveTitle']; ?></option>
+
+
+												<?php } ?>
+											</select>
+										
+		                            </div>
+		                    </div>
+
+
+							<div class="form-group row">
+	                            	<label class="col-md-3 label-control" for="leaveType">চাহিত ছুটি(দিন)</label>
+									<div class="col-md-9">
+										
+
+											<?php echo convertDateTotrad($getLeaveApplicationDetailsQRW['dateFrom']); ?> হইতে  <?php echo convertDateTotrad($getLeaveApplicationDetailsQRW['dateTo']); ?> তারিখ পর্যন্ত , <?php echo $reqDateDiff; ?> দিন
+										
+		                            </div>
+		                           
+		                    </div>
+
+
+
+							<div class="form-group row">
+	                            	<label class="col-md-3 label-control" for="leaveFrom">প্রস্তাবিত ছুটি(দিন)</label>
+		                            <div class="col-md-2">
+										
+		                            	<input type="text" class="form-control" id="leaveFrom" name="leaveFrom" autocomplete="off" onchange="calculateDays()" value="<?php echo convertDateTotrad($aDateFrom); ?>" />
+										
+		                            </div>
+									<label class="col-md-1 label-control" for="leaveTo">পর্যন্ত</label>
+		                            <div class="col-md-2">
+										
+		                            	<input type="text" class="form-control" id="leaveTo" name="leaveTo" autocomplete="off" onchange="calculateDays()" value="<?php echo convertDateTotrad($aDateTo); ?>" />
+										
+		                            </div>
+									<div class="col-md-4">
+										
+		                            		<input type="number" class="form-control" id="reqLeaveDays" name="approvedDays"  value="<?php echo $dateDiff; ?>" />
+										
+		                            </div>
+		                    </div>
+
+
+							
+
+
+
+							<div class="form-group row">
+	                            	<label class="col-md-3 label-control" for="employeeID">প্রস্তাবিত ছুটির ধরণ  </label>
+		                            <div class="col-md-9">
+										
+		                            		<select class="form-control" name="approvedLeaveType" required>
+												<option value=''></option>
+												
+												<?php
+												  while($lRow=mysqli_fetch_array($getAllLeaveTypesQ2)){
+												?>
+
+												<option <?php if($getLeaveApplicationDetailsQRW['approvedLeaveType'] == $lRow['leaveID']){ echo "selected"; } ?> value='<?php echo $lRow['leaveID']; ?>'><?php echo $lRow['leaveTitle']; ?></option>
+
+
+												<?php } ?>
+											</select>
+										
+		                            </div>
+		                     </div>
+
+
+
+							<div class="form-group row">
+	                            	<label class="col-md-3 label-control" for="employeeID">ডিডাক্ট ফ্রম </label>
+		                            <div class="col-md-9">
+										
+		                            		<select class="form-control" name="leaveTypeInTwo" required>
+												<option value=''></option>
+												
+												<option <?php if($getLeaveApplicationDetailsQRW['leaveTypeInTwo'] == 1){ echo "selected"; } ?> value="1">গড় বেতন </option>
+												<option <?php if($getLeaveApplicationDetailsQRW['leaveTypeInTwo'] == 2){ echo "selected"; } ?> value="2">অর্ধ-গড় বেতন </option>
+												<option <?php if($getLeaveApplicationDetailsQRW['leaveTypeInTwo'] == 3){ echo "selected"; } ?> value="3">নৈমিত্তিক (Casual Leave)</option>
+												<option <?php if($getLeaveApplicationDetailsQRW['leaveTypeInTwo'] == 4){ echo "selected"; } ?> value="4">বিনা বেতনে ছুটি</option>
+												<option <?php if($getLeaveApplicationDetailsQRW['leaveTypeInTwo'] == 10){ echo "selected"; } ?> value="10">অসাধারণ ছুটি</option>
+												<option <?php if($getLeaveApplicationDetailsQRW['leaveTypeInTwo'] == 5){ echo "selected"; } ?> value="5">ঐচ্ছিক ছুটি</option>											
+												<option <?php if($getLeaveApplicationDetailsQRW['leaveTypeInTwo'] == 6){ echo "selected"; } ?> value="6">কর্তনহীন ছুটি</option>
+											</select>
+										
+		                            </div>
+		                     </div>
+
+
+							<div class="form-group row">
+	                            	<label class="col-md-3 label-control" for="leaveApplication">লিভ টেম্পলেট</label>
+		                            <div class="col-md-9">
+										
+		                            		<select class="form-control" onchange="insertTemplate(this.value)">
+												<option value=''></option>
+												<?php while($ltRow = mysqli_fetch_array($getLeaveTemplatesQ)){ ?>
+
+												<option value='<?php echo $ltRow['templateData']; ?>'><?php echo $ltRow['templateData']; ?></option>
+
+												<?php } ?>
+												<option>আবেদনকারী <?php echo Bengali_DTN($dateDiff); ?> দিনের <?php echo $getLeaveTypeQRW['leaveTitle']; ?> চেয়েছেন । সদয় অনুমোদনের জন্য পেশ করা হল।</option>
+											</select>
+										
+		                            </div>
+		                    </div>
+
+
+
+							 <div class="form-group row">
+	                            	<label class="col-md-3 label-control" for="leaveType">মন্তব্য</label>
+		                            <div class="col-md-9">
+										
+		                            		<textarea class="form-control" name="note" id="note"></textarea>
+										
+		                            </div>
+		                    </div>
+
+
+
+
+
+							<h4 class="form-section"><i class="ft-file-text"></i>অনুলিপি:</h4>
+
+								<table id="tbl" border="1" width="100%">
+									<thead>
+										<tr >
+											<th class="text-center" height="50" width="20">
+												ক্রমিক নং
+											</th>    
+											
+											<th class="text-center" height="50" width="150">
+												কর্মকর্তার নাম ও পদবী
+											</th>
+
+											<th class="text-center" height="50" width="150">
+												ক্রমিক নং 
+											</th>											
+											
+																				
+											
+										</tr>
+									</thead>
+									<tbody>
+
+										<?php 
+										  $m = 1;
+										  while($dataRow = mysqli_fetch_array($getApprovalPersonsQ)){
+
+											  $getEmployeeListQ3 = mysqli_query($con, "select * from employee_list where employment_status=1");
+
+
+										?>
+										<tr id='addr0'>
+
+											<td height='40' style="text-align:center">
+											 <?php echo $m; ?>				
+											</td>
+
+											<td height='40' style="text-align:center">
+											 <select class="js-example-basic-single" style="width: 100%;" name="copyTo[]">
+												<option value=''></option>
+												<?php while($empRow = mysqli_fetch_array($getEmployeeListQ3)){ 
+												
+													$getEmployeeDetailsQ = mysqli_query($con, "select * from employee_list where id='$empRow[id]'");
+													$getEmployeeDetailsQRW = mysqli_fetch_assoc($getEmployeeDetailsQ);
+												
+												?>
+
+												<option <?php if($dataRow['employeeID'] == $empRow['id']){ echo "selected"; } ?> value='<?php echo $empRow['id']; ?>'><?php echo Bengali_DTN($getEmployeeDetailsQRW['employee_id']).' - '.$getEmployeeDetailsQRW['employee_name']; ?></option>
+
+												<?php } ?>
+											 </select>				
+											</td>
+
+											<td height='40' style="text-align:center">
+											 <input type="number" class="form-control" name="serial[]" value="<?php echo $dataRow['serial']; ?>" />				
+											</td>
+
+										</tr>
+
+										<?php $m++; } ?>
+
+										<tr id='addr2'></tr>
+
+
+									</tbody>
+								</table>
+
+										
+
+								<div class="row" style="margin-top: 20px;">
+								<div class="col-md-4">
+								&nbsp;
+								</div>
+								<div class="col-md-6">
+								&nbsp;</div>
+
+								<div class="col-md-2" style="text-align: right;">
+								<a id="add_row" class="btn btn-success  btn-fab"><i class="material-icons">add</i></a>&nbsp;&nbsp;&nbsp;&nbsp;<a id='delete_row' class="btn btn-danger  btn-fab"><i class="material-icons">clear</i></a>
+								</div>
+								</div>
+
+
+
+							
+
+
+							<div id="formresult"></div>		
+
+
+								
+	                        <div class="form-actions">
+	                            <button type="button" onClick="window.history.go(-1); return false;" class="btn btn-raised btn-warning mr-1">
+	                            	<i class="ft-x"></i> বাতিল করুন
+	                            </button>
+	                            <button type="submit" name="submit" id="submit" class="btn btn-raised btn-primary">
+	                                <i class="fa fa-check-square-o"></i> অনুমোদনের জন্য পাঠান
+	                            </button>
+	                        </div>
+	                    </form>
+                
+                
+						<p>&nbsp;</p>
+						<p>&nbsp;</p>
+
+						<div id="letter" style="width: 100%;"></div>
+								
+
+                
+							
+            </div>
+        </div>
+    </div>
+</section>
+<!--Invoice template ends-->
+          </div>
+        </div>
+
+        
+		
+</div>
+
+
+
+
+
+<?php
+include('footer.php');
+?>
+
+
+		<script>
+
+
+		$('.copyTo').select2();
+
+
+$('.js-example-basic-single').select2();
+
+
+
+var i=$('table tr').length;
+$("#add_row").on('click',function(){
+
+	i++;
+	
+	html = '<tr>';
+
+	html += "<td style='text-align:center;'>"+(i - 2)+"</td>";
+
+	html += "<td height='40' style='text-align:center'><select class='js-example-basic-single"+i+"' style='width:100%;' name='copyTo[]' id='copyTo_"+i+"' required><option value=''></option><?php while($cRow2=mysqli_fetch_array($getEmployeeListQ4)){?><option value='<?php echo $cRow2['id']; ?>'><?php echo Bengali_DTN($cRow2['employee_id']).' - '.$cRow2['employee_name']; ?></option><?php } ?></select></td>";
+		
+	html += "<td style='text-align:center'><input type='number' name='serial[]' id='serial_"+i+"' placeholder='' class='form-control' value='"+(i - 2)+"' required /></td>";
+	
+	html += '</tr>';
+	$('table').append(html);
+	
+
+	$('.js-example-basic-single'+i).select2();
+
+	
+});
+
+
+$("#delete_row").click(function(){
+	var i=$('table tr').length;
+    	 
+		 $("#tbl tr:last").remove();
+
+           
+
+
+	 });
+
+
+	 //...................
+
+
+		$(document).ready(function() {
+			$("#leaveFrom").datepicker({
+			  dateFormat: "dd/mm/yy"
+			});
+			$("#leaveTo").datepicker({
+			  dateFormat: "dd/mm/yy"
+			});
+		  });
+
+
+		//$('.js-example-basic-single').select2();
+
+		
+		$('.employeeID').select2();
+
+
+		function insertTemplate(str){
+
+			$('#note').val(str);
+		
+		
+		}
+
+
+		function calculateDays(){
+			
+				var date1Str = $('#leaveFrom').val();
+
+				var date2Str = $('#leaveTo').val();
+
+			// Extract day, month, and year from date strings
+			  const [day1, month1, year1] = date1Str.split('/');
+			  const [day2, month2, year2] = date2Str.split('/');
+
+			  // Create Date objects
+			  const date1 = new Date(`${year1}-${month1}-${day1}`);
+			  const date2 = new Date(`${year2}-${month2}-${day2}`);
+
+			  // Check if the Date objects are valid
+			  if (isNaN(date1) || isNaN(date2)) {
+				throw new Error('Invalid Date format');
+			  }
+
+			  // Calculate the difference in milliseconds
+			  const differenceMs = Math.abs(date2 - date1);
+
+			  // Convert the difference to days
+			  const days = Math.floor(differenceMs / (1000 * 60 * 60 * 24));
+
+			  $('#reqLeaveDays').val(days + 1);
+
+
+		}
+
+
+		
+
+
+
+
+//................................................
+
+
+$(document).ready(function() {
+    var form = $('#form'); // Contact form
+    var submit = $('#submit'); // Submit button
+
+    // Form submit event
+    form.on('submit', function(e) {
+        e.preventDefault(); // Prevent default form submission
+
+        // SweetAlert confirmation dialog
+        swal({
+        title: 'Are you sure?',
+        text: "You won't be able to revert this!",
+        type: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#0CC27E',
+        cancelButtonColor: '#FF586B',
+        confirmButtonText: 'Yes, proceed!',
+        cancelButtonText: 'No, cancel!',
+        confirmButtonClass: 'btn btn-success btn-raised mr-5',
+        cancelButtonClass: 'btn btn-danger btn-raised',
+        buttonsStyling: false
+    }).then(function () {
+        // Retrieve data from inputs
+        
+        // AJAX request to decline leave application
+        
+		$.ajax({
+                    url: 'approved_leave_application_update_action.php', // Form action URL
+                    type: 'POST', // Form submission method GET/POST
+                    dataType: 'html', // Expected response type HTML/JSON/XML
+                    data: new FormData(form[0]), // Serialize form data
+                    contentType: false,
+                    cache: false,
+                    processData: false,
+                    beforeSend: function() {
+                        submit.html('<i class="fa fa-spinner fa-spin"></i> Processing, please wait'); // Change submit button text
+                    },
+                    success: function(data) {
+                        //alert(data); // Show response data in an alert
+
+						$('#letter').html(data);				
+
+						if(data==0)
+						{
+						
+									
+							toastr.error('Error!!');
+
+							//window.location='dashboard?mainslug=dashboard';
+						
+						}
+						else
+						{
+						
+						   toastr.success('নোট টি অনুমোদনের জন্য কর্তৃপক্ষের নিকট পাঠানো হয়েছে ।');
+						   window.location='allowed_leave_applications?menuslug=allowed-leave-applications';
+
+						  // form.trigger('reset'); // reset form
+
+						  // $('#formresult').html(data);				
+						
+						}
+
+                        
+                    },
+                    error: function(e) {
+                        console.log(e); // Log error in console
+                        toastr.error('Failed to process the request.'); // Inform user about AJAX request failure
+                    }
+                });
+
+
+
+
+    }, function (dismiss) {
+        // Handle cancel
+        if (dismiss === 'cancel') {
+            // do nothing
+        }
+    });
+
+
+
+
+
+
+
+    });
+});
+
+
+
+		
+		</script>

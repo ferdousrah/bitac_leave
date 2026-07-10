@@ -1,0 +1,1024 @@
+/* ──────────────────────────────────────────────────────────
+   Modern Leave Tables — shared styles for leave list pages
+   Used by:
+     - views/leave/all-applications.php
+     - views/leave/approval.php
+     - (any other DataTables-based leave page using
+       .modern-leave-table + the chip/pill components below)
+   ────────────────────────────────────────────────────────── */
+
+/* ── Stats Strip ─────────────────────────────────────── */
+.stats-strip .stat-card {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    background: #fff;
+    border-radius: 0.6rem;
+    padding: 0.85rem 1rem;
+    box-shadow: 0 1px 3px rgba(58, 61, 83, 0.06);
+    border: 1px solid #eef0f5;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    height: 100%;
+    cursor: pointer;
+    user-select: none;
+}
+.stats-strip .stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(58, 61, 83, 0.1);
+}
+.stats-strip .stat-card.is-active {
+    box-shadow: 0 0 0 2px #6c5ce7, 0 4px 12px rgba(108, 92, 231, 0.18);
+}
+.stats-strip .stat-card:focus-visible {
+    outline: 2px solid #6c5ce7;
+    outline-offset: 2px;
+}
+.stats-strip .stat-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 1.4rem;
+}
+.stats-strip .stat-num {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #1a1d2e;
+    line-height: 1;
+}
+.stats-strip .stat-label {
+    font-size: 0.8rem;
+    color: #5d6580;
+    margin-top: 4px;
+}
+.stat-total .stat-icon    { background: #efeaff; color: #5648c4; }
+.stat-pending .stat-icon  { background: #fff3e1; color: #b8651a; }
+.stat-approved .stat-icon { background: #e6f7ee; color: #1a7e44; }
+.stat-rejected .stat-icon { background: #fbeaea; color: #b13c3c; }
+.stat-info .stat-icon     { background: #e3f1fb; color: #1a6ea8; }
+
+/* ── Filter chips ────────────────────────────────────── */
+.filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+.filter-chip {
+    display: inline-flex;
+    align-items: center;
+    background: #f3f4fa;
+    color: #5d6580;
+    border: 1px solid transparent;
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.filter-chip:hover {
+    background: #e7e9f3;
+    color: #3a3d53;
+}
+.filter-chip.active {
+    background: linear-gradient(135deg, #6c5ce7 0%, #5648c4 100%);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 2px 6px rgba(108, 92, 231, 0.25);
+}
+.filter-chip .chip-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 20px;
+    padding: 0 6px;
+    margin-left: 6px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.06);
+    color: inherit;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1;
+}
+.filter-chip.active .chip-count {
+    background: rgba(255, 255, 255, 0.22);
+    color: #fff;
+}
+
+/* ── Filter Panel actions row ─────────────────────────── */
+.filter-panel-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+/* ── Refresh icon spin ───────────────────────────────── */
+.ti-spin {
+    animation: ti-spin-anim 0.6s linear;
+}
+@keyframes ti-spin-anim {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+/* ── Checkbox column ─────────────────────────────────── */
+.modern-leave-table .col-checkbox {
+    width: 38px;
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+}
+.modern-leave-table .col-checkbox .form-check-input {
+    cursor: pointer;
+    margin: 0;
+}
+
+/* ── Bulk action bar (floating bottom) ───────────────── */
+.bulk-action-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 1.5rem;
+    transform: translate(-50%, 60px);
+    z-index: 1050;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+    opacity: 0;
+}
+.bulk-action-bar.is-visible {
+    transform: translate(-50%, 0);
+    opacity: 1;
+}
+.bulk-action-inner {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: #1a1d2e;
+    color: #fff;
+    padding: 0.55rem 0.9rem;
+    border-radius: 0.6rem;
+    box-shadow: 0 6px 24px rgba(26, 29, 46, 0.3);
+}
+.bulk-action-bar .bulk-count {
+    color: #fff;
+    font-weight: 500;
+    margin-right: 0.5rem;
+}
+.bulk-action-bar .btn-success {
+    background: #1a7e44;
+    border-color: #1a7e44;
+}
+.bulk-action-bar .btn-success:hover {
+    background: #156c3a;
+    border-color: #156c3a;
+}
+
+/* ── Filter Panel ────────────────────────────────────── */
+.filter-panel {
+    background: #f9fafd;
+    border: 1px solid #eef0f5;
+    border-radius: 0.6rem;
+    padding: 0.65rem 1rem;
+    transition: padding 0.2s ease;
+}
+.filter-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+/* Collapsible body — height/display animated via jQuery slideUp/slideDown */
+.filter-panel-body {
+    margin-top: 0.65rem;
+}
+.filter-panel.is-collapsed { padding-bottom: 0.55rem; padding-top: 0.55rem; }
+
+/* Toggle button */
+.filter-panel-toggle {
+    display: inline-flex;
+    align-items: center;
+    background: transparent;
+    border: 0;
+    padding: 0.25rem 0.5rem;
+    margin: -0.25rem -0.5rem;
+    border-radius: 0.4rem;
+    color: #3a3d53;
+    font-weight: 600;
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+.filter-panel-toggle:hover { background: rgba(108, 92, 231, 0.08); }
+/* Make sure clicks always land on the button (icons/spans can swallow the event) */
+.filter-panel-toggle > * { pointer-events: none; }
+.filter-panel-toggle .filter-chevron {
+    transition: transform 0.25s ease;
+    color: #5d6580;
+    font-size: 1.05rem;
+}
+.filter-panel:not(.is-collapsed) .filter-chevron {
+    transform: rotate(180deg);
+}
+
+.filter-panel-title {
+    font-weight: 600;
+    color: #3a3d53;
+    font-size: 0.88rem;
+}
+
+/* Active filter count badge */
+.filter-active-count {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 20px;
+    padding: 0 7px;
+    margin-left: 8px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #6c5ce7 0%, #5648c4 100%);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1;
+}
+.filter-active-count.has-active { display: inline-flex; }
+.filter-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: #5d6580;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 5px;
+}
+.filter-label i { font-size: 0.95rem; color: #8a90a6; }
+
+/* Field shell — used to wrap any input/select with leading icon */
+.field-shell {
+    position: relative;
+    display: block;
+}
+.field-shell .field-icon {
+    position: absolute;
+    left: 0.7rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #a0a5b8;
+    font-size: 1rem;
+    pointer-events: none;
+    z-index: 2;
+    transition: color 0.15s ease;
+}
+.field-shell:focus-within .field-icon { color: #6c5ce7; }
+
+/* Plain inputs / selects */
+.filter-panel .form-select-sm,
+.filter-panel .form-control-sm {
+    height: 38px;
+    border: 1px solid #dfe3ee;
+    border-radius: 0.5rem;
+    background: #fff;
+    font-size: 0.875rem;
+    color: #2c2e3a;
+    padding: 0.45rem 0.75rem;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+.filter-panel .form-select-sm { padding-right: 2rem; }
+.filter-panel .field-shell .form-control-sm,
+.filter-panel .field-shell .form-select-sm { padding-left: 2.2rem; }
+.filter-panel .form-select-sm:hover,
+.filter-panel .form-control-sm:hover { border-color: #c0c6d4; }
+.filter-panel .form-select-sm:focus,
+.filter-panel .form-control-sm:focus {
+    border-color: #6c5ce7;
+    box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.12);
+    background: #fff;
+}
+.filter-panel .form-control-sm::placeholder { color: #a8aec0; }
+
+/* Active state — subtle purple tint when value is set */
+.filter-panel .form-select-sm.has-value,
+.filter-panel .form-control-sm.has-value {
+    border-color: #b9aff3;
+    background: #faf9ff;
+}
+
+/* ── Select2 inside filter panel ─────────────────────── */
+.filter-panel .select2-container--default .select2-selection--single {
+    height: 38px;
+    border: 1px solid #dfe3ee;
+    border-radius: 0.5rem;
+    background: #fff;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+.filter-panel .select2-container--default .select2-selection--single:hover { border-color: #c0c6d4; }
+.filter-panel .select2-container--default .select2-selection--single .select2-selection__rendered {
+    line-height: 36px;
+    color: #2c2e3a;
+    padding-left: 0.75rem;
+    padding-right: 1.85rem;
+    font-size: 0.875rem;
+}
+.filter-panel .select2-container--default .select2-selection--single .select2-selection__placeholder {
+    color: #a8aec0;
+}
+.filter-panel .select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 36px;
+    width: 28px;
+    right: 4px;
+}
+.filter-panel .select2-container--default .select2-selection--single .select2-selection__arrow b {
+    border-color: #8a90a6 transparent transparent transparent;
+}
+.filter-panel .select2-container--default.select2-container--focus .select2-selection--single,
+.filter-panel .select2-container--default.select2-container--open .select2-selection--single {
+    border-color: #6c5ce7;
+    box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.12);
+}
+/* When Select2 has a real value (not placeholder), mark selection like has-value */
+.filter-panel .select2-container--default .select2-selection--single .select2-selection__rendered:not(.select2-selection__placeholder)[title]:not([title=""]) {
+    /* purely cosmetic — the wrapper handles the tint via JS */
+}
+.filter-panel .select2-active-value .select2-selection--single {
+    border-color: #b9aff3;
+    background: #faf9ff;
+}
+/* Clear (×) button bigger and themed */
+.filter-panel .select2-container--default .select2-selection__clear {
+    margin-right: 0.55rem;
+    color: #8a90a6;
+    font-weight: 500;
+    font-size: 1.05rem;
+    transition: color 0.15s ease;
+}
+.filter-panel .select2-container--default .select2-selection__clear:hover { color: #dc3545; }
+
+/* Search field inside Select2 dropdown */
+.select2-dropdown {
+    border: 1px solid #dfe3ee !important;
+    border-radius: 0.5rem !important;
+    box-shadow: 0 8px 24px rgba(58, 61, 83, 0.12) !important;
+    overflow: hidden;
+}
+.select2-search--dropdown .select2-search__field {
+    border: 1px solid #e7e9f0 !important;
+    border-radius: 0.4rem !important;
+    padding: 0.4rem 0.6rem !important;
+    font-size: 0.875rem;
+}
+.select2-search--dropdown .select2-search__field:focus {
+    outline: none !important;
+    border-color: #6c5ce7 !important;
+    box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.1) !important;
+}
+.select2-results__option {
+    padding: 0.45rem 0.75rem !important;
+    font-size: 0.875rem;
+}
+.select2-container--default .select2-results__option--highlighted[aria-selected],
+.select2-container--default .select2-results__option--highlighted {
+    background: linear-gradient(135deg, #6c5ce7 0%, #5648c4 100%) !important;
+    color: #fff !important;
+}
+.select2-container--default .select2-results__option[aria-selected=true] {
+    background: #efeaff !important;
+    color: #5648c4 !important;
+}
+
+/* Flatpickr range input — match height/border */
+.filter-panel .flatpickr-input,
+.filter-panel input.form-control-sm {
+    background-image: none;
+}
+.filter-panel input.flatpickr-input.flatpickr-mobile {
+    height: 38px;
+}
+/* Calendar dropdown popup polish */
+.flatpickr-calendar {
+    border-radius: 0.6rem !important;
+    box-shadow: 0 8px 24px rgba(58, 61, 83, 0.14) !important;
+    border: 1px solid #dfe3ee !important;
+}
+.flatpickr-day.selected,
+.flatpickr-day.startRange,
+.flatpickr-day.endRange,
+.flatpickr-day.selected.inRange,
+.flatpickr-day.startRange.inRange,
+.flatpickr-day.endRange.inRange {
+    background: #6c5ce7 !important;
+    border-color: #6c5ce7 !important;
+}
+.flatpickr-day.inRange {
+    background: #efeaff !important;
+    border-color: #efeaff !important;
+    box-shadow: -5px 0 0 #efeaff, 5px 0 0 #efeaff !important;
+}
+.flatpickr-day:hover {
+    background: #f3f4fa !important;
+    border-color: #f3f4fa !important;
+}
+
+/* ── Card / Tabs ─────────────────────────────────────── */
+.leave-apps-card {
+    border-radius: 0.6rem;
+    overflow: hidden;
+}
+.custom-leave-tabs {
+    border-bottom: 2px solid #e7e9f0;
+    flex-wrap: nowrap;
+    gap: 4px;
+    padding-bottom: 0;
+    margin-bottom: 0;
+}
+.custom-leave-tabs .nav-link {
+    background-color: transparent;
+    border-radius: 0.5rem 0.5rem 0 0;
+    border: none;
+    color: #5d6580;
+    font-weight: 500;
+    font-size: 0.95rem;
+    padding: 0.65rem 1.5rem;
+    margin-bottom: -2px;
+    transition: all 0.2s ease;
+    position: relative;
+}
+.custom-leave-tabs .nav-link.active,
+.custom-leave-tabs .nav-link.active:hover,
+.custom-leave-tabs .nav-link.active:focus,
+.custom-leave-tabs .nav-link.active:active {
+    background: linear-gradient(135deg, #3e3f4b 0%, #1a1d2e 100%) !important;
+    color: #ffffff !important;
+    box-shadow: 0 -2px 8px rgba(58, 61, 83, 0.15);
+}
+.custom-leave-tabs .nav-link.active i,
+.custom-leave-tabs .nav-link.active > span:not(.badge) {
+    color: #ffffff !important;
+}
+/* Tab count badges: visible on both active (dark) and inactive (light) tabs */
+.custom-leave-tabs .nav-link .badge {
+    background: rgba(255, 255, 255, 0.18) !important;
+    color: #ffffff !important;
+    font-weight: 600;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+}
+.custom-leave-tabs .nav-link:not(.active) .badge {
+    background: #eef0fb !important;
+    color: #4a4f6f !important;
+    border-color: transparent;
+}
+.custom-leave-tabs .nav-link:hover:not(.active) {
+    background-color: #f4f5fa;
+    color: #3A3D53;
+}
+
+/* ── Modern Table ────────────────────────────────────── */
+.modern-leave-table {
+    --row-border: #eef0f5;
+    --row-hover: #f8faff;
+    border: 0;
+    margin: 0;
+}
+.modern-leave-table thead th {
+    background: linear-gradient(180deg, #f8f9fc 0%, #eef1f8 100%);
+    color: #3a3d53;
+    font-weight: 600;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.85rem 0.9rem;
+    border: 0;
+    border-bottom: 2px solid #e0e4ee;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+.table-responsive.scroll-y {
+    max-height: 70vh;
+    overflow-y: auto;
+}
+.modern-leave-table tbody td {
+    padding: 0.85rem 0.9rem;
+    border: 0;
+    border-bottom: 1px solid var(--row-border);
+    font-size: 0.88rem;
+    vertical-align: middle;
+    color: #2c2e3a;
+}
+.modern-leave-table tbody tr {
+    transition: background-color 0.15s ease;
+}
+.modern-leave-table tbody tr:hover {
+    background-color: var(--row-hover);
+}
+.modern-leave-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+/* Filter row (secondary thead row with selects/inputs) */
+.modern-leave-table thead .filter-row th {
+    background: #fff !important;
+    border-bottom: 1px solid #eef0f5;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+    padding: 0.5rem 0.9rem;
+    position: static;
+}
+.modern-leave-table thead .filter-row .form-select-sm,
+.modern-leave-table thead .filter-row .form-control-sm {
+    border-radius: 0.4rem;
+    border-color: #e0e4ee;
+}
+
+/* ── Employee cell (avatar + meta) ───────────────────── */
+.emp-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 220px;
+}
+.emp-avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 100%);
+    color: #fff;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(108, 92, 231, 0.18);
+    position: relative;
+}
+.emp-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.emp-avatar-fallback {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+}
+.emp-meta {
+    line-height: 1.3;
+    min-width: 0;
+}
+.emp-name {
+    font-weight: 600;
+    color: #1a1d2e;
+    font-size: 0.92rem;
+}
+.emp-sub {
+    font-size: 0.78rem;
+    color: #5d6580;
+    margin-top: 2px;
+}
+.emp-sub-light {
+    font-size: 0.74rem;
+    color: #8a90a6;
+    margin-top: 1px;
+}
+
+/* ── Application No chip ─────────────────────────────── */
+.appno-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: #efeaf5;
+    color: #7c6ba4;
+    padding: 1px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    margin-bottom: 3px;
+}
+.appno-chip i { font-size: 0.85rem; }
+
+/* ── Meta chips (section, center) ───────────────────── */
+.meta-chip {
+    display: inline-flex;
+    align-items: center;
+    background: #f3f4fa;
+    color: #5d6580;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    border: 1px solid #e7e9f0;
+}
+.meta-chip i { font-size: 0.9rem; margin-right: 4px; }
+.meta-chip.center { background: #eef5ff; color: #1d4ed8; border-color: #d6e3fc; }
+.meta-chip.section { background: #f0f7f0; color: #2f7a3a; border-color: #d6e9d8; }
+
+/* ── Date range / pills ──────────────────────────────── */
+.date-range {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.83rem;
+    color: #2c2e3a;
+    font-weight: 500;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+}
+.date-range > i {
+    color: #6c5ce7;
+    font-size: 1rem;
+}
+.leave-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    align-items: center;
+}
+.days-pill {
+    display: inline-flex;
+    align-items: center;
+    background: #eef0fb;
+    color: #4a4f6f;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 0.74rem;
+    font-weight: 600;
+}
+.days-pill-success { background: #e6f7ee; color: #1a7e44; }
+.days-pill-info    { background: #e3f1fb; color: #1a6ea8; }
+.days-pill-warning { background: #fff3e1; color: #b8651a; }
+
+.leave-type-chip {
+    display: inline-block;
+    background: #f3f4fa;
+    color: #5d6580;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.74rem;
+    font-weight: 500;
+}
+.leave-sub {
+    margin-top: 4px;
+    font-size: 0.74rem;
+    color: #8a90a6;
+}
+.seg-list {
+    margin-top: 4px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.seg-pill {
+    display: inline-block;
+    background: #f9f5e8;
+    color: #8a6d1a;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    border: 1px solid #f0e7c8;
+}
+
+/* ── Joining type chip ───────────────────────────────── */
+.jt-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    border: 1px solid transparent;
+}
+.jt-ontime { background: #e6f7ee; color: #1a7e44; border-color: #c4ebd4; }
+.jt-early  { background: #fff3e1; color: #b8651a; border-color: #f5d8aa; }
+.jt-extend { background: #e3f1fb; color: #1a6ea8; border-color: #c0dff2; }
+
+/* ── Status pill ─────────────────────────────────────── */
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+.status-approved { background: #e6f7ee; color: #1a7e44; border-color: #c4ebd4; }
+.status-rejected { background: #fbeaea; color: #b13c3c; border-color: #f3c9c9; }
+.status-pending  { background: #fff3e1; color: #b8651a; border-color: #f5d8aa; }
+
+/* ── Action buttons ──────────────────────────────────── */
+.action-btn {
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.action-btn:hover {
+    background-color: #6c5ce7;
+    color: #fff;
+    border-color: #6c5ce7;
+}
+
+/* Group of action icons (e.g. eye / paperclip / approve) */
+.action-group {
+    display: inline-flex;
+    gap: 0.35rem;
+    align-items: center;
+}
+.action-icon {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    border: 1px solid transparent;
+    transition: all 0.15s ease;
+    text-decoration: none;
+    font-size: 0.95rem;
+}
+.action-icon i { line-height: 1; }
+.action-icon.icon-view     { background: #e3f1fb; color: #1a6ea8; }
+.action-icon.icon-attach   { background: #fff3e1; color: #b8651a; }
+.action-icon.icon-approve  { background: #e6f7ee; color: #1a7e44; }
+.action-icon.icon-reject   { background: #fbeaea; color: #b13c3c; }
+.action-icon:hover {
+    transform: translateY(-1px);
+    filter: brightness(0.95);
+    box-shadow: 0 3px 8px rgba(58, 61, 83, 0.12);
+    color: inherit;
+}
+
+/* ── Serial number badge ─────────────────────────────── */
+.serial-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #f3f4fa;
+    color: #5d6580;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+/* ── Leave type tag (badge variant) ──────────────────── */
+.leave-type-tag {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    border: 1px solid transparent;
+}
+.leave-type-default { background: #f3f4fa; color: #5d6580; border-color: #e5e7f0; }
+.leave-type-primary { background: #efeaff; color: #5648c4; border-color: #ddd5f6; }
+.leave-type-info    { background: #e3f1fb; color: #1a6ea8; border-color: #c0dff2; }
+.leave-type-success { background: #e6f7ee; color: #1a7e44; border-color: #c4ebd4; }
+.leave-type-warning { background: #fff3e1; color: #b8651a; border-color: #f5d8aa; }
+.leave-type-purple  { background: #f5e9ff; color: #7c3aed; border-color: #e6d3fc; }
+
+/* ── Previous leave cell (used / remaining + file) ──── */
+.prev-leave-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 130px;
+}
+.prev-leave-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+}
+.prev-leave-label {
+    font-size: 0.7rem;
+    color: #5d6580;
+    font-weight: 500;
+    min-width: 48px;
+}
+.prev-leave-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.74rem;
+    color: #1a7e44;
+    text-decoration: none;
+    margin-top: 2px;
+}
+.prev-leave-file:hover { color: #156c3a; text-decoration: underline; }
+
+/* ── Email link / user code ──────────────────────────── */
+.email-link {
+    color: #5d6580;
+    text-decoration: none;
+    font-size: 0.85rem;
+    transition: color 0.15s ease;
+}
+.email-link:hover { color: #6c5ce7; text-decoration: underline; }
+.user-code {
+    display: inline-flex;
+    align-items: center;
+    background: #f3f4fa;
+    color: #4a4f6f;
+    padding: 3px 9px;
+    border-radius: 0.4rem;
+    font-size: 0.78rem;
+    font-weight: 500;
+    font-family: var(--bs-font-monospace, 'Courier New', monospace);
+}
+
+/* ── Note cell ───────────────────────────────────────── */
+.note-cell {
+    color: #4a4f6f;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    max-width: 320px;
+}
+
+/* ── DataTables overrides ────────────────────────────── */
+.dataTables_wrapper .dataTables_filter {
+    position: relative;
+}
+.dataTables_wrapper .dataTables_filter label {
+    color: transparent;
+    font-size: 0;
+    margin: 0;
+}
+.dataTables_wrapper .dataTables_filter input {
+    border: 1px solid #e0e4ee;
+    border-radius: 0.5rem;
+    padding: 0.45rem 0.85rem 0.45rem 2.2rem;
+    margin-left: 0;
+    width: 240px;
+    font-size: 0.88rem;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a90a6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>");
+    background-repeat: no-repeat;
+    background-position: 0.65rem center;
+}
+.dataTables_wrapper .dataTables_filter input::placeholder {
+    color: #a0a5b8;
+}
+.dataTables_wrapper .dataTables_filter input:focus {
+    outline: none;
+    border-color: #6c5ce7;
+    box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.12);
+}
+.dataTables_wrapper .dataTables_length select {
+    border: 1px solid #e0e4ee;
+    border-radius: 0.4rem;
+    padding: 0.25rem 0.5rem;
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+    border-radius: 0.4rem !important;
+    margin: 0 2px;
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {
+    background: linear-gradient(135deg, #6c5ce7 0%, #5648c4 100%) !important;
+    color: #fff !important;
+    border: 0 !important;
+}
+.dataTables_wrapper .dataTables_info {
+    color: #5d6580;
+    font-size: 0.85rem;
+}
+
+/* ── Empty state ─────────────────────────────────────── */
+.dataTables_empty {
+    padding: 3rem 1rem !important;
+    color: #8a90a6;
+    font-size: 0.92rem;
+    text-align: center !important;
+}
+.empty-state-rich {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 1rem;
+}
+.empty-state-rich i {
+    font-size: 3rem;
+    color: #d4d8e3;
+    line-height: 1;
+}
+.empty-state-rich .empty-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #5d6580;
+    margin-top: 0.5rem;
+}
+.empty-state-rich .empty-subtitle {
+    font-size: 0.85rem;
+    color: #a0a5b8;
+}
+
+/* ── Loading overlay ─────────────────────────────────── */
+.dataTables_processing {
+    position: absolute;
+    inset: 0;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    z-index: 10;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    text-indent: 0;
+    color: #5d6580;
+    font-size: 0.9rem;
+}
+.dataTables_processing .spinner-border {
+    width: 2.5rem;
+    height: 2.5rem;
+    color: #6c5ce7 !important;
+    border-width: 0.22em;
+}
+
+/* ── Responsive ──────────────────────────────────────── */
+@media (max-width: 992px) {
+    .emp-cell { min-width: auto; }
+    .modern-leave-table thead th,
+    .modern-leave-table tbody td { padding: 0.65rem; font-size: 0.82rem; }
+    .stats-strip .stat-num { font-size: 1.15rem; }
+    .stats-strip .stat-icon { width: 38px; height: 38px; font-size: 1.15rem; }
+}
+
+/* Mobile card-view (< 768px) */
+@media (max-width: 767.98px) {
+    .table-responsive { overflow-x: visible; padding: 0; }
+    .modern-leave-table,
+    .modern-leave-table.dataTable {
+        display: block;
+        width: 100% !important;
+        max-width: 100% !important;
+        table-layout: auto !important;
+    }
+    .modern-leave-table thead { display: none; }
+    .modern-leave-table tbody { display: block; width: 100%; }
+    .modern-leave-table tbody tr {
+        display: block;
+        width: 100%;
+        background: #fff;
+        border: 1px solid #eef0f5;
+        border-radius: 0.6rem;
+        margin-bottom: 0.75rem;
+        padding: 0.5rem 0.85rem;
+        box-shadow: 0 1px 2px rgba(58, 61, 83, 0.04);
+        box-sizing: border-box;
+    }
+    .modern-leave-table tbody tr:hover { background: #fff; }
+    .modern-leave-table tbody td {
+        display: block;
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 0.55rem 0 !important;
+        border: 0 !important;
+        border-bottom: 1px dashed #eef0f5 !important;
+        text-align: left;
+        font-size: 0.88rem;
+        box-sizing: border-box;
+        white-space: normal;
+    }
+    .modern-leave-table tbody td:last-child { border-bottom: 0 !important; }
+    .modern-leave-table tbody td::before {
+        content: attr(data-label);
+        display: block;
+        font-weight: 600;
+        font-size: 0.7rem;
+        color: #5d6580;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: 0.35rem;
+    }
+    .modern-leave-table tbody td.is-empty { display: none; }
+    .modern-leave-table tbody td.compact-cell {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+    }
+    .modern-leave-table tbody td.compact-cell::before {
+        margin-bottom: 0;
+    }
+    .modern-leave-table thead th { position: static; }
+    .filter-chips { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; }
+    .filter-chip { white-space: nowrap; }
+    .dataTables_wrapper .dataTables_filter input { width: 100%; }
+}

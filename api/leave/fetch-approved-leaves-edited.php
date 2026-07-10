@@ -1,0 +1,266 @@
+<?php
+session_start();
+header('Content-Type: application/json');
+
+require_once(__DIR__ . '/../../connection.php');
+require_once(__DIR__ . '/../../library/number_converter.php');
+
+// Disable error display for clean JSON response
+error_reporting(0);
+ini_set('display_errors', 0);
+
+function dateDiffInDays($date1, $date2) {
+    $diff = strtotime($date2) - strtotime($date1);
+    return abs(round($diff / 86400));
+}
+
+// Resolve organization_id for the current user
+if (!empty($_SESSION['isCenterAdmin']) && !empty($_SESSION['centerAdminOrgID'])) {
+    $orgID = intval($_SESSION['centerAdminOrgID']);
+} else {
+    $empID = intval($_SESSION['employeeID'] ?? 0);
+    $stmt_org = $con->prepare("SELECT organization_id FROM employee_list WHERE id = ?");
+    $stmt_org->bind_param("i", $empID);
+    $stmt_org->execute();
+    $orgRow = $stmt_org->get_result()->fetch_assoc();
+    $stmt_org->close();
+    $orgID = intval($orgRow['organization_id'] ?? 0);
+}
+
+// Filter params
+$sectionFilter   = (int)($_POST['sectionFilter']   ?? 0);
+$employeeFilter  = (int)($_POST['employeeFilter']  ?? 0);
+$joiningTypeFilter = (int)($_POST['joiningTypeFilter'] ?? 0);
+
+$filterClause = '';
+if ($sectionFilter   > 0) $filterClause .= " AND el.section_id = $sectionFilter";
+if ($employeeFilter  > 0) $filterClause .= " AND el.id = $employeeFilter";
+if ($joiningTypeFilter > 0) $filterClause .= " AND lja.joiningType = $joiningTypeFilter";
+
+// Get request parameters
+$limit = isset($_POST['length']) ? (int) $_POST['length'] : 10;
+$start = isset($_POST['start']) ? (int) $_POST['start'] : 0;
+$search = isset($_POST['search']['value']) ? mysqli_real_escape_string($con, $_POST['search']['value']) : '';
+
+// Base query - Edited leaves (isSentbyAdmin = 1)
+$baseQuery = "FROM leave_joining_data_for_approval lj
+    LEFT JOIN leave_joining_application lja ON lj.leaveApplicationID = lja.leaveApplicationID
+    LEFT JOIN leave_applications la ON lj.leaveApplicationID = la.dataID
+    LEFT JOIN employee_list el ON la.applicantID = el.id
+    LEFT JOIN job_title jt ON el.designation = jt.id
+    LEFT JOIN sections s ON el.section_id = s.id
+    LEFT JOIN organization o ON el.organization_id = o.id
+    WHERE lj.isSupervisor = 1 AND lj.isApproved = 1
+    AND lj.isSentbyAdmin = 1
+    AND lja.joiningType != 1
+    AND la.organization_id = $orgID
+    $filterClause";
+
+// Search filter
+$searchQuery = "";
+if ($search) {
+    $searchQuery = " AND (el.employee_name LIKE '%$search%' OR jt.job_title_name LIKE '%$search%' OR s.section_name LIKE '%$search%')";
+}
+
+// Count total records
+$totalRecordsQuery = "SELECT COUNT(*) as total $baseQuery $searchQuery";
+$totalRecordsResult = mysqli_query($con, $totalRecordsQuery);
+$totalRecords = mysqli_fetch_assoc($totalRecordsResult)['total'] ?? 0;
+
+// Fetch data
+$dataQuery = "SELECT lj.*, lja.*, la.*, el.employee_name, el.employee_id AS emp_code, el.photo, el.designation, el.section_id, el.organization_id,
+    jt.job_title_name, s.section_name, o.organization_name
+    $baseQuery $searchQuery
+    ORDER BY lj.dataID DESC
+    LIMIT $start, $limit";
+$dataResult = mysqli_query($con, $dataQuery);
+
+$data = array();
+$sl = $start + 1;
+
+while ($empRow = mysqli_fetch_array($dataResult)) {
+
+    if ($empRow['joiningType'] == 1 || $empRow['joiningType'] == 2 || $empRow['joiningType'] == 3) {
+
+        // প্রাথমিক অনুমোদিত ছুটি
+        $adateF = date_create($empRow['primaryLeaveDateFrom']);
+        $adateT = date_create($empRow['primaryLeaveDateTo']);
+        $adateDiff = dateDiffInDays($empRow['primaryLeaveDateFrom'], $empRow['primaryLeaveDateTo']) + 1;
+
+        // ভোগকৃত ছুটি
+        $leaveSpentDateFrom = date_create($empRow['approvedDateFrom']);
+        $leaveSpentDateTo = date_create($empRow['requestedJoiningDate']);
+        $leaveSpent = dateDiffInDays($empRow['approvedDateFrom'], $empRow['requestedJoiningDate']) + 1;
+
+        // সংশোধিত ছুটি
+        $correctedLeaveHtml = '';
+        if (!empty($empRow['approvedDate'])) {
+            $correctionJoiningDate = date_create($empRow['approvedDateTo']);
+            $correctedLeaveSpent = dateDiffInDays($empRow['approvedDateFrom'], $empRow['approvedDateTo']) + 1;
+
+            $correctedLeaveTypeText = '';
+            if ($empRow['approvedLeaveType'] == 1) {
+                $correctedLeaveTypeText = "গড় বেতন";
+            } else if ($empRow['approvedLeaveType'] == 2) {
+                $correctedLeaveTypeText = "অর্ধ-গড় বেতন";
+            } else if ($empRow['approvedLeaveType'] == 3) {
+                $correctedLeaveTypeText = "নৈমিত্তিক (Casual Leave)";
+            } else if ($empRow['approvedLeaveType'] == 4) {
+                $correctedLeaveTypeText = "অসাধারণ(বিনা বেতনে ছুটি)";
+            } else if ($empRow['approvedLeaveType'] == 5) {
+                $correctedLeaveTypeText = "ঐচ্ছিক (Optional Leave)";
+            }
+
+            $correctedLeaveHtml = banglaNumber(date_format($leaveSpentDateFrom, "d/m/Y")) . ' হইতে ' . banglaNumber(date_format($correctionJoiningDate, "d/m/Y")) . ', ' . banglaNumber($correctedLeaveSpent) . ' দিন ' . htmlspecialchars($correctedLeaveTypeText);
+        }
+
+        // Determine leave type text
+        $leaveTypeText = '';
+        if ($empRow['primaryApprovedLeaveType'] == 1) {
+            $leaveTypeText = "গড় বেতন";
+        } else if ($empRow['primaryApprovedLeaveType'] == 2) {
+            $leaveTypeText = "অর্ধ-গড় বেতন";
+        } else if ($empRow['primaryApprovedLeaveType'] == 3) {
+            $leaveTypeText = "নৈমিত্তিক (Casual Leave)";
+        } else if ($empRow['primaryApprovedLeaveType'] == 4) {
+            $leaveTypeText = "অসাধারণ(বিনা বেতনে ছুটি)";
+        } else if ($empRow['primaryApprovedLeaveType'] == 5) {
+            $leaveTypeText = "ঐচ্ছিক (Optional Leave)";
+        }
+
+        // Application type
+        $applicationType = '';
+        if ($empRow['joiningType'] == 1) {
+            $applicationType = "সঠিক সময়ে যোগদান";
+        } else if ($empRow['joiningType'] == 2) {
+            $applicationType = "অগ্রিম যোগদান";
+        } else if ($empRow['joiningType'] == 3) {
+            $applicationType = "বর্ধিত ছুটির আবেদন";
+        }
+
+        // Status pill
+        $statusBadge = '';
+        if ($empRow['status'] == 1) {
+            $statusBadge = '<span class="status-pill status-approved"><i class="ti tabler-check me-1"></i>অনুমোদিত</span>';
+        } else if ($empRow['status'] == 2) {
+            $statusBadge = '<span class="status-pill status-rejected"><i class="ti tabler-x me-1"></i>অনুমোদিত হয়নি</span>';
+        } else if ($empRow['status'] == 0) {
+            $statusBadge = '<span class="status-pill status-pending"><i class="ti tabler-hourglass me-1"></i>অপেক্ষমান</span>';
+        }
+
+        // Action buttons - determine joining letter link
+        $joiningLetter = '';
+        if ($empRow['joiningType'] == 1) {
+            $joiningLetter = '../../views/leave/documents/joining-details.php';
+        } else if ($empRow['joiningType'] == 2) {
+            $joiningLetter = '../../views/leave/documents/joining-details-typetwo.php';
+        } else if ($empRow['joiningType'] == 3) {
+            $joiningLetter = '../../views/leave/documents/joining-details-typethree.php';
+        }
+
+        $actionHtml = '<div class="action-group">
+            <a class="action-icon icon-view" target="_blank" href="../../views/leave/documents/office-notice.php?menuslug=leave-joining-approval&leaveApplicationID=' . intval($empRow['leaveApplicationID']) . '" data-bs-toggle="tooltip" title="ছুটির অফিস আদেশ">
+                <i class="ti tabler-file-description"></i>
+            </a>';
+
+        if ($joiningLetter != '') {
+            $actionHtml .= '<a class="action-icon icon-attach" target="_blank" href="' . $joiningLetter . '?menuslug=leave-joining-approval&leaveApplicationID=' . intval($empRow['leaveApplicationID']) . '" data-bs-toggle="tooltip" title="যোগদান পত্র">
+                <i class="ti tabler-file-check"></i>
+            </a>';
+        }
+
+        if ($empRow['isSentbyAdmin'] == 1) {
+            $actionHtml .= '<a class="btn btn-sm btn-warning" href="../../views/leave/documents/approval-note.php?menuslug=manage-approved-leaves&leaveApplicationID=' . intval($empRow['leaveApplicationID']) . '&isApproved=1" target="_blank">
+                <i class="ti tabler-edit me-1"></i>সংশোধিত নোট সম্পাদনা
+            </a>';
+
+            if ($empRow['status'] == 1) {
+                $actionHtml .= '<a class="btn btn-sm btn-success" href="../../views/leave/documents/corrected-office-notice.php?menuslug=manage-approved-leaves&leaveApplicationID=' . intval($empRow['leaveApplicationID']) . '" target="_blank">
+                    <i class="ti tabler-file-check me-1"></i>সংশোধিত অফিস আদেশ
+                </a>';
+            }
+        }
+
+        $actionHtml .= '</div>';
+
+        // Avatar-based applicant cell
+        $empName_  = trim($empRow['employee_name'] ?? '');
+        $empJob_   = trim($empRow['job_title_name'] ?? '');
+        $empPhoto_ = trim($empRow['photo'] ?? '');
+        $empCode_  = trim($empRow['emp_code'] ?? '');
+        $initials_ = mb_substr($empName_, 0, 1, 'UTF-8');
+        $parts_ = preg_split('/\s+/u', $empName_);
+        if (count($parts_) > 1) {
+            $initials_ = mb_substr($parts_[0], 0, 1, 'UTF-8') . mb_substr(end($parts_), 0, 1, 'UTF-8');
+        }
+        if (!empty($empPhoto_)) {
+            $photoUrl_ = BASE_URL . '/uploads/' . htmlspecialchars($empPhoto_);
+            $avatarHtml_ = '<div class="emp-avatar"><img src="' . $photoUrl_ . '" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';"><span class="emp-avatar-fallback" style="display:none;">' . htmlspecialchars($initials_) . '</span></div>';
+        } else {
+            $avatarHtml_ = '<div class="emp-avatar"><span class="emp-avatar-fallback">' . htmlspecialchars($initials_) . '</span></div>';
+        }
+        $applicantCell = '<div class="emp-cell">' . $avatarHtml_
+                       . '<div class="emp-meta"><div class="emp-name">' . htmlspecialchars($empName_) . ($empCode_ ? ' <span class="emp-sub-light">(' . banglaNumber($empCode_) . ')</span>' : '') . '</div>'
+                       . ($empJob_ ? '<div class="emp-sub">' . htmlspecialchars($empJob_) . '</div>' : '')
+                       . '</div></div>';
+
+        // Section + center chips
+        $secCenter = '';
+        if (!empty($empRow['section_name'])) {
+            $secCenter .= '<span class="meta-chip section"><i class="ti tabler-building"></i>' . htmlspecialchars($empRow['section_name']) . '</span>';
+        }
+        if (!empty($empRow['organization_name'])) {
+            if ($secCenter) $secCenter .= '<br>';
+            $secCenter .= '<span class="meta-chip center mt-1"><i class="ti tabler-map-pin"></i>' . htmlspecialchars($empRow['organization_name']) . '</span>';
+        }
+
+        // Joining type chip
+        $jtClass = $empRow['joiningType'] == 1 ? 'jt-ontime' : ($empRow['joiningType'] == 2 ? 'jt-early' : 'jt-extend');
+        $jtIcon  = $empRow['joiningType'] == 1 ? 'tabler-clock' : ($empRow['joiningType'] == 2 ? 'tabler-calendar-minus' : 'tabler-calendar-plus');
+        $applicationTypeHtml = '<span class="jt-chip ' . $jtClass . '"><i class="ti ' . $jtIcon . ' me-1"></i>' . htmlspecialchars($applicationType) . '</span>';
+
+        // Primary leave (date + days + type chip)
+        $primaryHtml = '<div class="date-range"><i class="ti tabler-calendar-check"></i><span>' . banglaNumber(date_format($adateF, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($adateT, "d/m/Y")) . '</span></div>'
+                     . '<div class="leave-meta"><span class="days-pill days-pill-success">' . banglaNumber($adateDiff) . ' দিন</span>'
+                     . ($leaveTypeText ? ' <span class="leave-type-chip">' . htmlspecialchars($leaveTypeText) . '</span>' : '')
+                     . '</div>';
+
+        // Spent leave
+        $spentHtml = '<div class="date-range"><i class="ti tabler-clock-check"></i><span>' . banglaNumber(date_format($leaveSpentDateFrom, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($leaveSpentDateTo, "d/m/Y")) . '</span></div>'
+                   . '<div class="leave-meta"><span class="days-pill days-pill-info">' . banglaNumber($leaveSpent) . ' দিন</span>'
+                   . ($leaveTypeText ? ' <span class="leave-type-chip">' . htmlspecialchars($leaveTypeText) . '</span>' : '')
+                   . '</div>';
+
+        // Corrected leave (already built in $correctedLeaveHtml — convert plain text to date-range pill if present)
+        if (!empty($correctedLeaveHtml) && !empty($empRow['approvedDate'])) {
+            $correctedHtml = '<div class="date-range"><i class="ti tabler-edit"></i><span>' . banglaNumber(date_format($leaveSpentDateFrom, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($correctionJoiningDate, "d/m/Y")) . '</span></div>'
+                          . '<div class="leave-meta"><span class="days-pill days-pill-warning">' . banglaNumber($correctedLeaveSpent) . ' দিন</span>'
+                          . ($correctedLeaveTypeText ? ' <span class="leave-type-chip">' . htmlspecialchars($correctedLeaveTypeText) . '</span>' : '')
+                          . '</div>';
+        } else {
+            $correctedHtml = '<span class="text-muted small">—</span>';
+        }
+
+        $data[] = array(
+            'serial' => '<span class="serial-num">' . $sl++ . '</span>',
+            'applicant_name' => $applicantCell,
+            'section' => $secCenter,
+            'application_type' => $applicationTypeHtml,
+            'primary_approved_leave' => $primaryHtml,
+            'leave_spent' => $spentHtml,
+            'corrected_leave' => $correctedHtml,
+            'status' => $statusBadge,
+            'action' => $actionHtml
+        );
+    }
+}
+
+// Response
+$response = array(
+    "draw" => isset($_POST['draw']) ? intval($_POST['draw']) : 1,
+    "recordsTotal" => $totalRecords,
+    "recordsFiltered" => $totalRecords,
+    "data" => $data
+);
+
+echo json_encode($response);

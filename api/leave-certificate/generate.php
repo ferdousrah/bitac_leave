@@ -1,0 +1,301 @@
+<?php
+// Start session first
+session_start();
+
+// Set JSON header
+header('Content-Type: application/json');
+
+// Start output buffering
+ob_start();
+require_once(__DIR__ . '/../../connection.php');
+require_once(__DIR__ . '/../../library/number_converter.php');
+require_once(__DIR__ . '/../../function.php');
+ob_end_clean();
+
+// Check if user is logged in
+if (!isset($_SESSION['username'])) {
+    echo json_encode(['status' => 0, 'message' => 'আপনি লগইন করেননি!']);
+    exit;
+}
+
+// Actor scope — Super Admin + HQ (org=4) all centers; others restricted to own center
+$_actorStmt = mysqli_prepare($con,
+    "SELECT ul.user_group_id, el.organization_id AS emp_org
+     FROM user_list ul
+     LEFT JOIN employee_list el ON ul.employee_id = el.id
+     WHERE ul.user_id = ? LIMIT 1");
+$_un = $_SESSION['username'];
+mysqli_stmt_bind_param($_actorStmt, 's', $_un);
+mysqli_stmt_execute($_actorStmt);
+$_actor = mysqli_fetch_assoc(mysqli_stmt_get_result($_actorStmt)) ?: [];
+mysqli_stmt_close($_actorStmt);
+$_isSuperAdmin   = ((int)($_actor['user_group_id'] ?? 0) === 1);
+$_myCenterID     = (int)($_actor['emp_org'] ?? 0);
+$_seeAllCenters  = ($_isSuperAdmin || $_myCenterID === 4);
+
+// Helper: verify a posted employee ID falls within the actor's scope
+$_scopeCheck = function($empID) use ($con, $_seeAllCenters, $_myCenterID) {
+    $empID = (int)$empID;
+    if ($empID <= 0) return false;
+    if ($_seeAllCenters) return true;
+    $s = mysqli_prepare($con, "SELECT 1 FROM employee_list WHERE id = ? AND organization_id = ? LIMIT 1");
+    mysqli_stmt_bind_param($s, 'ii', $empID, $_myCenterID);
+    mysqli_stmt_execute($s);
+    $ok = (bool)mysqli_fetch_assoc(mysqli_stmt_get_result($s));
+    mysqli_stmt_close($s);
+    return $ok;
+};
+
+// Get POST data
+$incrementYear = isset($_POST['incrementYear']) ? mysqli_real_escape_string($con, $_POST['incrementYear']) : date('Y');
+$certificateDate = isset($_POST['certificateDate']) ? mysqli_real_escape_string($con, $_POST['certificateDate']) : '';
+$noticeDate = isset($_POST['noticeDate']) ? mysqli_real_escape_string($con, $_POST['noticeDate']) : '';
+$employeeID = isset($_POST['employeeID']) ? mysqli_real_escape_string($con, $_POST['employeeID']) : '';
+$signatoryID = isset($_POST['signatoryID']) ? mysqli_real_escape_string($con, $_POST['signatoryID']) : '';
+$copyToArray = isset($_POST['copyTo']) ? $_POST['copyTo'] : array();
+$serialArray = isset($_POST['serial']) ? $_POST['serial'] : array();
+
+// Validate required fields
+if (empty($certificateDate)) {
+    echo json_encode(['status' => 0, 'message' => 'সার্টিফিকেট তারিখ প্রদান করুন!']);
+    exit;
+}
+
+if (empty($noticeDate)) {
+    echo json_encode(['status' => 0, 'message' => 'নোটিশ তারিখ প্রদান করুন!']);
+    exit;
+}
+
+if ($employeeID === '') {
+    echo json_encode(['status' => 0, 'message' => 'কর্মচারী নির্বাচন করুন!']);
+    exit;
+}
+
+if (empty($signatoryID)) {
+    echo json_encode(['status' => 0, 'message' => 'স্বাক্ষরকারী কর্মকর্তা নির্বাচন করুন!']);
+    exit;
+}
+
+// Server-side scope enforcement — pretty much defence-in-depth against tampered POST
+if ((int)$employeeID !== 0 && !$_scopeCheck($employeeID)) {
+    echo json_encode(['status' => 0, 'message' => 'এই কর্মচারীর জন্য সার্টিফিকেট তৈরির অনুমতি নেই']);
+    exit;
+}
+if (!$_scopeCheck($signatoryID)) {
+    echo json_encode(['status' => 0, 'message' => 'এই স্বাক্ষরকারী কর্মকর্তা নির্বাচনের অনুমতি নেই']);
+    exit;
+}
+foreach ((array)$copyToArray as $_ctID) {
+    if ($_ctID === '' || (int)$_ctID === 0) continue; // empty rows allowed
+    if (!$_scopeCheck($_ctID)) {
+        echo json_encode(['status' => 0, 'message' => 'অনুলিপি তালিকায় অন্য কেন্দ্রের কর্মকর্তা যোগ করা যাবে না']);
+        exit;
+    }
+}
+
+// Convert certificateDate from dd/mm/yyyy to Y-m-d
+$dateObj = DateTime::createFromFormat('d/m/Y', $certificateDate);
+if ($dateObj === false) {
+    echo json_encode(['status' => 0, 'message' => 'সার্টিফিকেট তারিখ সঠিক নয়!']);
+    exit;
+}
+$certificateDateFormatted = $dateObj->format('Y-m-d');
+
+// Convert noticeDate from dd/mm/yyyy to Y-m-d
+$dateObjtwo = DateTime::createFromFormat('d/m/Y', $noticeDate);
+if ($dateObjtwo === false) {
+    echo json_encode(['status' => 0, 'message' => 'নোটিশ তারিখ সঠিক নয়!']);
+    exit;
+}
+$noticeDateFormatted = $dateObjtwo->format('Y-m-d');
+
+// Get signatory employee details
+$getSignatoryQ = mysqli_query($con, "SELECT * FROM employee_list WHERE id='$signatoryID'");
+$signatoryDetails = mysqli_fetch_assoc($getSignatoryQ);
+
+if (!$signatoryDetails) {
+    echo json_encode(['status' => 0, 'message' => 'স্বাক্ষরকারী কর্মকর্তা খুঁজে পাওয়া যায়নি!']);
+    exit;
+}
+
+$signatory = $signatoryID;
+$signatoryDesignation = $signatoryDetails['designation'];
+$signatoryCenterID = $signatoryDetails['organization_id'];
+$creationDate = date('Y-m-d H:i:s');
+
+// Casual leave year range
+$casualStart = $incrementYear . '-01-01';
+$casualEnd = $incrementYear . '-12-31';
+
+// Function to calculate leave for an employee
+function calculateEmployeeLeave($con, $empID, $todayDate, $casualStart, $casualEnd) {
+
+    $getEmployeeQ = mysqli_query($con, "SELECT * FROM employee_list WHERE id='$empID'");
+    $empInfo = mysqli_fetch_assoc($getEmployeeQ);
+
+    $getPrevLeaveHistory = mysqli_query($con, "SELECT * FROM previous_leave_deduction WHERE employeeID='$empID' AND isApproved=1");
+    $prevLeaveHistory = mysqli_fetch_assoc($getPrevLeaveHistory);
+
+    $calculateFullAvgQ = mysqli_query($con, "SELECT SUM(leaveDeduction) as totalFullLDeduction FROM leave_deduction_history WHERE employeeID='$empID' AND leaveID='1' AND isApproved=1");
+    $fullAvgDeduction = mysqli_fetch_assoc($calculateFullAvgQ);
+
+    $calculateHalfAvgQ = mysqli_query($con, "SELECT SUM(leaveDeduction) as totalLHalfDeduction FROM leave_deduction_history WHERE employeeID='$empID' AND leaveID='2' AND isApproved=1");
+    $halfAvgDeduction = mysqli_fetch_assoc($calculateHalfAvgQ);
+
+    $calculateWPAvgQ = mysqli_query($con, "SELECT SUM(leaveDeduction) as totalWPDeduction FROM leave_deduction_history WHERE employeeID='$empID' AND leaveID='4' AND isApproved=1");
+    $wpDeduction = mysqli_fetch_assoc($calculateWPAvgQ);
+
+    $calculateExOrLManualQ = mysqli_query($con, "SELECT SUM(leaveDeduction) as totalExODeduction FROM leave_deduction_history WHERE employeeID='$empID' AND leaveID='10' AND isApproved=1");
+    $exOrDeduction = mysqli_fetch_assoc($calculateExOrLManualQ);
+
+    $getTotalLWioutPayQ = mysqli_query($con, "SELECT SUM(approvedDays) as totalLWithoutPay FROM leave_applications WHERE status=1 AND applicantID='$empID' AND leaveTypeInTwo='4'");
+    $totalWithoutPayApps = mysqli_fetch_assoc($getTotalLWioutPayQ);
+
+    $getTotalExtraOrdinaryQ = mysqli_query($con, "SELECT SUM(approvedDays) as totalExorLeave FROM leave_applications WHERE status=1 AND applicantID='$empID' AND leaveTypeInTwo='10'");
+    $totalExtraOrdinary = mysqli_fetch_assoc($getTotalExtraOrdinaryQ);
+
+    $totalWithoutPay = (($totalWithoutPayApps['totalLWithoutPay'] ?? 0) + ($prevLeaveHistory['leaveWithoutPay'] ?? 0) + ($wpDeduction['totalWPDeduction'] ?? 0));
+
+    $totalExtraOrdinaryLeave = (($totalExtraOrdinary['totalExorLeave'] ?? 0) + ($prevLeaveHistory['extraOrdinaryLeave'] ?? 0) + ($exOrDeduction['totalExODeduction'] ?? 0));
+
+    $diff = abs(strtotime($todayDate) - strtotime($empInfo['joining_date']));
+    $days = round($diff / (60 * 60 * 24));
+
+    $days = $days - (($totalWithoutPayApps['totalLWithoutPay'] ?? 0) + ($prevLeaveHistory['leaveWithoutPay'] ?? 0) + ($wpDeduction['totalWPDeduction'] ?? 0) + ($totalExtraOrdinary['totalExorLeave'] ?? 0) + ($prevLeaveHistory['extraOrdinaryLeave'] ?? 0) + ($exOrDeduction['totalExODeduction'] ?? 0));
+
+    // Full average salary leave
+    $fullAvgSalLeave = floor($days / 11);
+    if (fmod($days, 11) >= 6) {
+        $fullAvgSalLeave++;
+    }
+
+    $getTotalFullAvgUsedQ = mysqli_query($con, "SELECT SUM(approvedDays) as totalAvgSal FROM leave_applications WHERE status=1 AND applicantID='$empID' AND leaveTypeInTwo='1'");
+    $totalFullAvgUsed = mysqli_fetch_assoc($getTotalFullAvgUsedQ);
+
+    $totalAvgSalVugkrito = ($prevLeaveHistory['avgSalary'] ?? 0) + ($totalFullAvgUsed['totalAvgSal'] ?? 0) + ($fullAvgDeduction['totalFullLDeduction'] ?? 0);
+    $restAvgSalLeave = $fullAvgSalLeave - $totalAvgSalVugkrito;
+
+    // Half average salary leave
+    $halfAvgSalLeave = floor($days / 12);
+    if (fmod($days, 12) >= 6) {
+        $halfAvgSalLeave++;
+    }
+
+    $getTotalHalfAvgUsedQ = mysqli_query($con, "SELECT SUM(approvedDays)*2 as totalHalfAvgSal FROM leave_applications WHERE status=1 AND applicantID='$empID' AND leaveTypeInTwo='2'");
+    $totalHalfAvgUsed = mysqli_fetch_assoc($getTotalHalfAvgUsedQ);
+
+    $totalHalfAvgSalVugkrito = ($prevLeaveHistory['halfAvgSalary'] ?? 0) + ($totalHalfAvgUsed['totalHalfAvgSal'] ?? 0) + ($halfAvgDeduction['totalLHalfDeduction'] ?? 0);
+    $restHalfAvgSalLeave = $halfAvgSalLeave - $totalHalfAvgSalVugkrito;
+
+    return array(
+        'fullAvgSalaryInDays' => $restAvgSalLeave,
+        'halfSalaryInDays' => $restHalfAvgSalLeave,
+        'withoutSalaryInDays' => $totalWithoutPay
+    );
+}
+
+// Function to generate certificate
+function generateCertificate($con, $empID, $incrementYear, $certificateDateFormatted, $noticeDateFormatted, $signatory, $signatoryDesignation, $signatoryCenterID, $creationDate, $copyToArray, $casualStart, $casualEnd) {
+
+    $getEmpQ = mysqli_query($con, "SELECT * FROM employee_list WHERE id='$empID'");
+    $empInfo = mysqli_fetch_assoc($getEmpQ);
+
+    if (!$empInfo) {
+        return false;
+    }
+
+    $designation = $empInfo['designation'];
+    $centerID = $empInfo['organization_id'];
+    $memorialNo = $empInfo['memorialNo'] ?? '';
+
+    $leaveData = calculateEmployeeLeave($con, $empID, $certificateDateFormatted, $casualStart, $casualEnd);
+
+    $checkExistQ = mysqli_query($con, "SELECT leaveSummaryID FROM yearly_leave_summary WHERE employeeID='$empID' AND year='$incrementYear'");
+
+    if (mysqli_num_rows($checkExistQ) > 0) {
+        $existingRow = mysqli_fetch_assoc($checkExistQ);
+        $leaveSummaryID = $existingRow['leaveSummaryID'];
+
+        $updateQ = mysqli_query($con, "UPDATE yearly_leave_summary SET
+            designation = '$designation',
+            centerID = '$centerID',
+            memorial_number = '$memorialNo',
+            date = '$certificateDateFormatted',
+            noticeDate = '$noticeDateFormatted',
+            fullHalfSalaryInDays = '{$leaveData['fullAvgSalaryInDays']}',
+            HalfSalaryInDays = '{$leaveData['halfSalaryInDays']}',
+            withoutSalaryInDays = '{$leaveData['withoutSalaryInDays']}',
+            signatory = '$signatory',
+            signatoryDesignation = '$signatoryDesignation',
+            signatoryCenterID = '$signatoryCenterID'
+            WHERE leaveSummaryID = '$leaveSummaryID'");
+
+        if (!$updateQ) {
+            return false;
+        }
+
+        mysqli_query($con, "DELETE FROM leaveSummary_copy WHERE leaveSummaryID='$leaveSummaryID'");
+
+    } else {
+        $insertQ = mysqli_query($con, "INSERT INTO yearly_leave_summary
+            (employeeID, designation, centerID, memorial_number, date, noticeDate, year, fullHalfSalaryInDays, HalfSalaryInDays, withoutSalaryInDays, creationDate, signatory, signatoryDesignation, signatoryCenterID)
+            VALUES
+            ('$empID', '$designation', '$centerID', '$memorialNo', '$certificateDateFormatted', '$noticeDateFormatted', '$incrementYear', '{$leaveData['fullAvgSalaryInDays']}', '{$leaveData['halfSalaryInDays']}', '{$leaveData['withoutSalaryInDays']}', '$creationDate', '$signatory', '$signatoryDesignation', '$signatoryCenterID')");
+
+        if (!$insertQ) {
+            return false;
+        }
+
+        $leaveSummaryID = mysqli_insert_id($con);
+    }
+
+    // Insert copy-to records
+    if (!empty($copyToArray) && array_filter($copyToArray)) {
+        foreach ($copyToArray as $copyToEmpID) {
+            if (!empty($copyToEmpID)) {
+                $getCopyToQ = mysqli_query($con, "SELECT * FROM employee_list WHERE id='$copyToEmpID'");
+                $copyToInfo = mysqli_fetch_assoc($getCopyToQ);
+
+                if ($copyToInfo) {
+                    mysqli_query($con, "INSERT INTO leaveSummary_copy
+                        (leaveSummaryID, copyTo, designation, centerID)
+                        VALUES
+                        ('$leaveSummaryID', '$copyToEmpID', '{$copyToInfo['designation']}', '{$copyToInfo['organization_id']}')");
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
+try {
+    if ($employeeID == '0') {
+        $getAllEmployeeQ = mysqli_query($con, "SELECT id FROM employee_list WHERE employment_status=1 OR employment_status=2");
+        $successCount = 0;
+        $totalCount = mysqli_num_rows($getAllEmployeeQ);
+
+        while ($empRow = mysqli_fetch_array($getAllEmployeeQ)) {
+            if (generateCertificate($con, $empRow['id'], $incrementYear, $certificateDateFormatted, $noticeDateFormatted, $signatory, $signatoryDesignation, $signatoryCenterID, $creationDate, $copyToArray, $casualStart, $casualEnd)) {
+                $successCount++;
+            }
+        }
+
+        if ($successCount > 0) {
+            echo json_encode(['status' => 1, 'message' => "সকল কর্মচারীর ({$successCount}/{$totalCount}) সার্টিফিকেট সফলভাবে তৈরি করা হয়েছে!"]);
+        } else {
+            echo json_encode(['status' => 0, 'message' => 'সার্টিফিকেট তৈরি করতে ব্যর্থ হয়েছে!']);
+        }
+    } else {
+        if (generateCertificate($con, $employeeID, $incrementYear, $certificateDateFormatted, $noticeDateFormatted, $signatory, $signatoryDesignation, $signatoryCenterID, $creationDate, $copyToArray, $casualStart, $casualEnd)) {
+            echo json_encode(['status' => 1, 'message' => 'সার্টিফিকেট সফলভাবে তৈরি করা হয়েছে!']);
+        } else {
+            echo json_encode(['status' => 0, 'message' => 'সার্টিফিকেট তৈরি করতে ব্যর্থ হয়েছে!']);
+        }
+    }
+} catch (Exception $e) {
+    echo json_encode(['status' => 0, 'message' => 'একটি ত্রুটি হয়েছে: ' . $e->getMessage()]);
+}
+
+mysqli_close($con);
+?>

@@ -1,0 +1,42 @@
+# ── Secrets / env ──────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Composer dependencies (installed during Docker build) ──────────────
+/vendor/
+
+# Root-level /mpdf is a legacy duplicate of composer-managed vendor/mpdf.
+# Excluded to avoid ~770 duplicate files bloating the repo.
+/mpdf/
+
+# ── Runtime / generated ────────────────────────────────────────────────
+/uploads/*
+!/uploads/.gitkeep
+/pdfs/*
+!/pdfs/.gitkeep
+/sessions/
+/php_errors.log
+*.log
+
+# ── Database dumps (large) ─────────────────────────────────────────────
+*.sql.gz
+backup_*.sql
+
+# ── Editor / OS ────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Bak files ──────────────────────────────────────────────────────────
+*.bak
+
+# ── Build outputs ──────────────────────────────────────────────────────
+/dist/
+/build/
+
+# ── Coolify ────────────────────────────────────────────────────────────
+.coolify/

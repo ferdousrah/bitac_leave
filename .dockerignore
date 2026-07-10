@@ -1,0 +1,37 @@
+# Don't bake into the image
+.git
+.gitignore
+.env
+.env.local
+.env.*.local
+README.md
+DEPLOY.md
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# Editor / OS
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Vendor (will be installed inside container by composer)
+vendor
+
+# Runtime data — should come from volumes, not the image
+uploads/
+sessions/
+php_errors.log
+*.log
+
+# Old/backup files
+*.bak
+*.sql
+backup_*
+
+# Build artifacts
+dist/
+build/

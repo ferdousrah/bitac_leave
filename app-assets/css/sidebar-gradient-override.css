@@ -1,0 +1,31 @@
+/*!
+ * Sidebar Dark Blue Gradient Override
+ * This file overrides all sidebar background colors with a dark blue gradient
+ */
+
+/* Override ALL possible sidebar background variations with dark blue gradient */
+.app-sidebar .sidebar-background,
+.app-sidebar[data-background-color] .sidebar-background,
+.app-sidebar[data-background-color='white'] .sidebar-background,
+.app-sidebar[data-background-color='king-yna'] .sidebar-background,
+.app-sidebar[data-background-color='ibiza-sunset'] .sidebar-background,
+.app-sidebar[data-background-color='flickr'] .sidebar-background,
+.app-sidebar[data-background-color='purple-bliss'] .sidebar-background,
+.app-sidebar[data-background-color='man-of-steel'] .sidebar-background,
+.app-sidebar[data-background-color='purple-love'] .sidebar-background,
+.app-sidebar[data-background-color='red'] .sidebar-background,
+.app-sidebar[data-background-color='blue'] .sidebar-background,
+.app-sidebar[data-background-color='green'] .sidebar-background,
+.app-sidebar[data-background-color='orange'] .sidebar-background,
+.app-sidebar[data-background-color='purple'] .sidebar-background {
+  background: linear-gradient(180deg, #1a237e 0%, #0d47a1 50%, #01579b 100%) !important;
+  background-image: none !important;
+}
+
+/* Remove any :after or :before overlays on sidebar background */
+.app-sidebar .sidebar-background:after,
+.app-sidebar .sidebar-background:before,
+.app-sidebar[data-background-color] .sidebar-background:after,
+.app-sidebar[data-background-color] .sidebar-background:before {
+  display: none !important;
+}

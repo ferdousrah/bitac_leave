@@ -1,0 +1,384 @@
+/* ========================================
+   Custom Sidebar Menu - Built from Scratch
+   Enhanced with smooth animations and responsive design
+   ======================================== */
+
+.custom-sidebar-menu {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.custom-sidebar-menu > li {
+    position: relative;
+    margin: 3px 0;
+}
+
+.custom-sidebar-menu > li > a {
+    display: flex;
+    align-items: center;
+    padding: 14px 20px;
+    color: rgba(255, 255, 255, 0.9);
+    text-decoration: none;
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 8px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Smooth hover effect with gradient */
+.custom-sidebar-menu > li > a::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.05));
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: 0;
+}
+
+.custom-sidebar-menu > li > a:hover::before {
+    opacity: 1;
+}
+
+.custom-sidebar-menu > li > a:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    transform: translateX(4px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Active state with solid background */
+.custom-sidebar-menu > li.active > a {
+    background: linear-gradient(135deg, rgba(231, 76, 60, 0.5), rgba(236, 112, 99, 0.35));
+    font-weight: 600;
+    color: #fff;
+    border-left: 4px solid #e74c3c;
+    box-shadow: 0 2px 8px rgba(231, 76, 60, 0.25);
+}
+
+.custom-sidebar-menu > li > a i {
+    font-size: 20px;
+    margin-right: 12px;
+    width: 26px;
+    text-align: center;
+    transition: all 0.3s ease;
+    z-index: 1;
+}
+
+.custom-sidebar-menu > li > a:hover i {
+    transform: scale(1.1);
+}
+
+.custom-sidebar-menu > li.active > a i {
+    color: #fff;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+.custom-sidebar-menu > li > a .menu-title {
+    flex: 1;
+    font-size: 1.075rem;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    z-index: 1;
+}
+
+/* Arrow icon for parent menus - Enhanced */
+.custom-sidebar-menu > li.has-submenu > a::after {
+    content: '\e929';
+    font-family: 'feather';
+    font-size: 16px;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    margin-left: auto;
+    opacity: 0.8;
+    z-index: 1;
+}
+
+.custom-sidebar-menu > li.has-submenu > a:hover::after {
+    opacity: 1;
+}
+
+.custom-sidebar-menu > li.has-submenu.open > a::after {
+    transform: rotate(90deg);
+    color: #fff;
+    opacity: 1;
+}
+
+/* Submenu styles - Enhanced with smooth animations */
+.custom-submenu {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 0 0 8px 8px;
+    margin-top: 4px;
+}
+
+.custom-sidebar-menu > li.has-submenu.open .custom-submenu {
+    /* Max-height is set dynamically via JavaScript */
+    box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.1);
+}
+
+.custom-submenu li {
+    margin: 0;
+}
+
+.custom-submenu li a {
+    display: block;
+    padding: 12px 20px 12px 54px;
+    color: rgba(255, 255, 255, 0.85);
+    text-decoration: none;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 1.025rem;
+    border-radius: 6px;
+    margin: 2px 8px;
+    position: relative;
+}
+
+/* Submenu item indicator on hover */
+.custom-submenu li a::before {
+    content: '';
+    position: absolute;
+    left: 38px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.5);
+    transition: all 0.3s ease;
+}
+
+.custom-submenu li a:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    padding-left: 58px;
+    transform: translateX(2px);
+}
+
+.custom-submenu li a:hover::before {
+    width: 8px;
+    height: 8px;
+    background: #fff;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
+}
+
+.custom-submenu li.active a {
+    color: #fff;
+    background: rgba(231, 76, 60, 0.35);
+    font-weight: 600;
+    border-left: 3px solid #e74c3c;
+    padding-left: 51px;
+    box-shadow: 0 1px 3px rgba(231, 76, 60, 0.2);
+}
+
+.custom-submenu li.active a::before {
+    background: #e74c3c;
+    width: 8px;
+    height: 8px;
+    box-shadow: 0 0 4px rgba(231, 76, 60, 0.6);
+}
+
+/* Badge styles - Enhanced */
+.menu-badge {
+    display: inline-block;
+    padding: 3px 9px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 12px;
+    margin-left: 8px;
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(4px);
+    transition: all 0.3s ease;
+    z-index: 1;
+}
+
+.custom-sidebar-menu > li > a:hover .menu-badge {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(1.05);
+}
+
+.custom-sidebar-menu > li.active > a .menu-badge {
+    background: rgba(231, 76, 60, 0.5);
+    transform: scale(1.05);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Mobile menu button */
+#mobile-tab-button {
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    margin-top: 10px;
+    padding-top: 10px;
+}
+
+/* ========================================
+   ANIMATIONS - Smooth and Professional
+   ======================================== */
+
+/* Pulse animation for badges */
+@keyframes pulseBadge {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.08);
+    }
+}
+
+.menu-badge:not(:empty) {
+    animation: pulseBadge 2s ease-in-out infinite;
+}
+
+/* ========================================
+   MOBILE RESPONSIVE DESIGN
+   ======================================== */
+
+/* Tablet devices (768px - 991px) */
+@media (max-width: 991px) {
+    .custom-sidebar-menu > li > a {
+        padding: 13px 16px;
+    }
+
+    .custom-sidebar-menu > li > a i {
+        font-size: 18px;
+        margin-right: 10px;
+    }
+
+    .custom-sidebar-menu > li > a .menu-title {
+        font-size: 1.025rem;
+    }
+
+    .custom-submenu li a {
+        padding: 11px 16px 11px 50px;
+        font-size: 0.975rem;
+    }
+}
+
+/* Mobile devices (less than 768px) */
+@media (max-width: 767px) {
+    .custom-sidebar-menu {
+        padding: 0;
+    }
+
+    .custom-sidebar-menu > li {
+        margin: 2px 0;
+    }
+
+    .custom-sidebar-menu > li > a {
+        padding: 12px 14px;
+        border-radius: 6px;
+    }
+
+    /* Disable transform on mobile for better performance */
+    .custom-sidebar-menu > li > a:hover {
+        transform: none;
+    }
+
+    .custom-sidebar-menu > li > a i {
+        font-size: 18px;
+        margin-right: 8px;
+        width: 22px;
+    }
+
+    .custom-sidebar-menu > li > a .menu-title {
+        font-size: 1.005rem;
+        font-weight: 500;
+    }
+
+    .custom-submenu {
+        margin-top: 2px;
+    }
+
+    .custom-submenu li a {
+        padding: 10px 14px 10px 46px;
+        font-size: 0.975rem;
+        margin: 1px 6px;
+    }
+
+    .custom-submenu li a:hover {
+        padding-left: 50px;
+        transform: none;
+    }
+
+    .custom-submenu li a::before {
+        left: 32px;
+        width: 5px;
+        height: 5px;
+    }
+
+    .custom-submenu li.active a {
+        padding-left: 43px;
+    }
+
+    .menu-badge {
+        padding: 2px 7px;
+        font-size: 10px;
+        margin-left: 6px;
+    }
+}
+
+/* Small mobile devices (less than 480px) */
+@media (max-width: 480px) {
+    .custom-sidebar-menu > li > a {
+        padding: 11px 12px;
+    }
+
+    .custom-sidebar-menu > li > a i {
+        font-size: 16px;
+        margin-right: 8px;
+        width: 20px;
+    }
+
+    .custom-sidebar-menu > li > a .menu-title {
+        font-size: 0.975rem;
+    }
+
+    .custom-submenu li a {
+        padding: 9px 12px 9px 42px;
+        font-size: 0.945rem;
+    }
+
+    .custom-submenu li a:hover {
+        padding-left: 46px;
+    }
+
+    .custom-submenu li a::before {
+        left: 28px;
+        width: 4px;
+        height: 4px;
+    }
+}
+
+/* ========================================
+   ACCESSIBILITY & PERFORMANCE
+   ======================================== */
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+    .custom-sidebar-menu > li > a,
+    .custom-submenu li a {
+        /* Larger touch targets */
+        min-height: 44px;
+    }
+
+    /* Remove hover effects on touch devices */
+    .custom-sidebar-menu > li > a::before {
+        display: none;
+    }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "BITAC Leave Management System",
+  "short_name": "BITAC Leave",
+  "description": "Bangladesh Institute of Training & Administration Center — Leave Management",
+  "start_url": "/bitac_leave/dashboard.php",
+  "scope": "/bitac_leave/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#696cff",
+  "lang": "bn",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/bitac_leave/uploads/bitac-logo-inner.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/bitac_leave/uploads/bitac-logo-inner.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
