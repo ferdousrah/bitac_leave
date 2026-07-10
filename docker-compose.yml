@@ -61,6 +61,23 @@ services:
       retries: 15
       start_period: 40s
 
+  phpmyadmin:
+    # Web-based DB admin — use for schema import, ad-hoc queries, and quick
+    # inspection. Restrict access with a strong password / IP allowlist in
+    # production (Coolify → Application → Settings → Basic Auth is easiest).
+    image: phpmyadmin/phpmyadmin:latest
+    restart: unless-stopped
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      # Increase upload cap so a full bitac_leave dump imports in one shot.
+      UPLOAD_LIMIT: 256M
+    expose:
+      - "80"
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   bitac_uploads:
   bitac_sessions:
