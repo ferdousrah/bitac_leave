@@ -47,10 +47,14 @@ services:
       # Auto-import schema + seed on first boot (drop SQL files in ./db-init/)
       - ./db-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      # mariadb-admin ping is the most portable way to check DB readiness across
+      # MariaDB versions. start_period gives the container time to initialize
+      # (create root user, DB, grant privileges) before healthchecks count.
+      test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -uroot -p\"$$MARIADB_ROOT_PASSWORD\" --silent || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 15
+      start_period: 40s
 
 volumes:
   bitac_uploads:
