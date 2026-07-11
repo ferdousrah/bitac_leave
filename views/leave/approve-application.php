@@ -1220,7 +1220,10 @@ function __initApproveModalScript() {
         else     { $w.hide();        $('#saveSegmentsBtn').prop('disabled', false); }
     }
 
-    $('#segmentEditModal').on('shown.bs.modal', rebuildModalSegments);
+    // Namespaced off/on so this script block is idempotent — turbo:load or
+    // any re-render of the page (e.g. after modal open) would otherwise stack
+    // handlers and cause each click on "আরেকটা ধরন যোগ করুন" to add 2, 4, 6+ rows.
+    $('#segmentEditModal').off('shown.bs.modal.seg').on('shown.bs.modal.seg', rebuildModalSegments);
 
     // Also render once on page load so segments are pre-populated even before modal opens
     $(function(){
@@ -1229,14 +1232,14 @@ function __initApproveModalScript() {
         }
     });
 
-    $('#modalAddSegment').on('click', function(){
+    $('#modalAddSegment').off('click.addSeg').on('click.addSeg', function(){
         const idx = $('.modal-segment').length;
         $('#modalSegments').append(renderRow(null, idx));
         bindModalHandlers();
         recalcModal();
     });
 
-    $('#saveSegmentsBtn').on('click', function(){
+    $('#saveSegmentsBtn').off('click.saveSeg').on('click.saveSeg', function(){
         const segs = collectModalSegs();
         if (segs.length === 0) {
             Swal.fire({title:'ত্রুটি', text:'অন্তত একটা segment থাকতে হবে।', icon:'error',
