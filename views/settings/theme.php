@@ -44,6 +44,9 @@ foreach ($defaults as $k => $def) {
 }
 
 $menuslug = htmlspecialchars($_GET['menuslug'] ?? 'theme-settings');
+
+// Current logo filename (from template_settings.header_logo)
+$currentLogo = trim($getSettingsDetailsQRW['header_logo'] ?? '');
 ?>
 
 <!-- Page Header -->
@@ -153,6 +156,48 @@ $menuslug = htmlspecialchars($_GET['menuslug'] ?? 'theme-settings');
 /* Wide rgba inputs */
 .ts-row input[type="text"].wide { width: 180px; }
 
+/* Brand & Logo card */
+.brand-logo-row {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 20px;
+    align-items: center;
+}
+@media (max-width: 575px) {
+    .brand-logo-row { grid-template-columns: 1fr; }
+}
+.brand-logo-preview {
+    background: #f8f9fc;
+    border: 1px dashed #d1d5db;
+    border-radius: 8px;
+    height: 90px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    overflow: hidden;
+}
+.brand-logo-preview img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: block;
+}
+.brand-logo-empty {
+    color: #9ca3af;
+    font-size: 0.8rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+.brand-logo-empty i { font-size: 1.6rem; }
+.brand-logo-controls { min-width: 0; }
+.brand-logo-file-name {
+    word-break: break-all;
+    line-height: 1.4;
+}
+
 /* Action bar */
 .ts-actions {
     display: flex;
@@ -167,7 +212,48 @@ $menuslug = htmlspecialchars($_GET['menuslug'] ?? 'theme-settings');
 }
 </style>
 
-<form id="themeSettingsForm" class="theme-settings-wrap">
+<form id="themeSettingsForm" class="theme-settings-wrap" enctype="multipart/form-data">
+
+    <!-- Brand & Logo -->
+    <div class="ts-card" style="grid-column: 1 / -1;">
+        <div class="ts-card-header">
+            <span class="ts-card-icon"><i class="ti tabler-photo"></i></span>
+            <div class="ts-card-text">
+                <h6 class="ts-card-title">ব্র্যান্ড ও লোগো</h6>
+                <p class="ts-card-sub">সাইডবারের হেডার লোগো (PNG / JPG / SVG / WEBP, সর্বোচ্চ ২ MB)</p>
+            </div>
+        </div>
+
+        <div class="brand-logo-row">
+            <div class="brand-logo-preview" id="brandLogoPreview">
+                <?php if ($currentLogo): ?>
+                    <img src="<?= BASE_URL ?>/uploads/<?= htmlspecialchars($currentLogo) ?>" alt="Current logo">
+                <?php else: ?>
+                    <div class="brand-logo-empty">
+                        <i class="ti tabler-photo-off"></i>
+                        <span>কোনো লোগো নির্ধারিত নেই</span>
+                    </div>
+                <?php endif; ?>
+            </div>
+            <div class="brand-logo-controls">
+                <label for="header_logo_file" class="btn btn-label-primary btn-sm mb-2">
+                    <i class="ti tabler-upload me-1"></i>নতুন লোগো বেছে নিন
+                </label>
+                <input type="file" id="header_logo_file" name="header_logo_file" accept="image/png,image/jpeg,image/svg+xml,image/webp" class="d-none">
+                <div class="brand-logo-file-name text-muted small" id="brandLogoFileName">
+                    <?php if ($currentLogo): ?>
+                        বর্তমান: <?= htmlspecialchars($currentLogo) ?>
+                    <?php else: ?>
+                        কোনো ফাইল নির্বাচিত নয়
+                    <?php endif; ?>
+                </div>
+                <div class="text-muted small mt-2" style="line-height:1.55;">
+                    <i class="ti tabler-info-circle me-1"></i>
+                    সাইজ প্রায় <strong>200 × 60 px</strong> বা <strong>1:3</strong> অনুপাত সবচেয়ে ভালো দেখাবে। সাইডবার collapsed অবস্থায় ছোট আইকন-শৈলীর লোগো ব্যবহার করুন।
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Sidebar surface + brand + label -->
     <div class="ts-card">
@@ -435,6 +521,30 @@ $menuslug = htmlspecialchars($_GET['menuslug'] ?? 'theme-settings');
     }
 
     document.getElementById('previewBtn').addEventListener('click', applyPreview);
+
+    // Logo file preview
+    const logoFileInput = document.getElementById('header_logo_file');
+    const logoPreview   = document.getElementById('brandLogoPreview');
+    const logoFileName  = document.getElementById('brandLogoFileName');
+    if (logoFileInput) {
+        logoFileInput.addEventListener('change', function() {
+            const file = this.files && this.files[0];
+            if (!file) return;
+            if (file.size > 2 * 1024 * 1024) {
+                Swal.fire({ title: 'ত্রুটি', text: 'ফাইল ২ MB এর বেশি হতে পারবে না', icon: 'error',
+                    confirmButtonColor: '#ff3e1d',
+                    customClass: { confirmButton: 'btn btn-danger' }, buttonsStyling: false });
+                this.value = '';
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = e => {
+                logoPreview.innerHTML = '<img src="' + e.target.result + '" alt="New logo">';
+            };
+            reader.readAsDataURL(file);
+            logoFileName.textContent = 'নির্বাচিত: ' + file.name;
+        });
+    }
 
     document.getElementById('resetDefaultsBtn').addEventListener('click', () => {
         Swal.fire({

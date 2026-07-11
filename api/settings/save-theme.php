@@ -67,6 +67,44 @@ foreach ($allowed as $field) {
     $values[$field] = $v;
 }
 
+// ── Logo upload (optional) ─────────────────────────────────────────────
+// Fields handled here: header_logo (sidebar brand). If a file arrives under
+// $_FILES['header_logo_file'], validate + move it into /uploads/ and store the
+// generated filename in template_settings.header_logo.
+if (isset($_FILES['header_logo_file']) && is_uploaded_file($_FILES['header_logo_file']['tmp_name'])) {
+    $up = $_FILES['header_logo_file'];
+    if ($up['error'] !== UPLOAD_ERR_OK) {
+        reply(false, ['error' => 'Logo upload error code: ' . $up['error']]);
+    }
+    if ($up['size'] > 2 * 1024 * 1024) {
+        reply(false, ['error' => 'লোগোর সর্বোচ্চ সাইজ ২ MB']);
+    }
+    $ext = strtolower(pathinfo($up['name'], PATHINFO_EXTENSION));
+    $allowedExt = ['png', 'jpg', 'jpeg', 'svg', 'webp'];
+    if (!in_array($ext, $allowedExt, true)) {
+        reply(false, ['error' => 'PNG / JPG / SVG / WEBP অনুমোদিত']);
+    }
+
+    // Verify MIME actually matches by magic bytes (defence-in-depth over just ext)
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime = $finfo->file($up['tmp_name']);
+    $allowedMime = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'];
+    if (!in_array($mime, $allowedMime, true)) {
+        reply(false, ['error' => 'ফাইলের MIME টাইপ সমর্থিত নয় (' . htmlspecialchars($mime) . ')']);
+    }
+
+    $uploadDir = __DIR__ . '/../../uploads/';
+    if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+
+    $unique = 'header_logo_' . time() . '_' . mt_rand(1000, 9999) . '.' . $ext;
+    $target = $uploadDir . $unique;
+    if (!move_uploaded_file($up['tmp_name'], $target)) {
+        reply(false, ['error' => 'ফাইল সংরক্ষণ ব্যর্থ']);
+    }
+
+    $values['header_logo'] = $unique;
+}
+
 if (empty($values)) {
     reply(false, ['error' => 'No fields to save']);
 }
