@@ -715,6 +715,14 @@ function Bengali_DTN($NRS){
     line-height: 1.4 !important;
     font-size: 0.86rem !important;
 }
+/* Select2 dropdown was triggering a page-wide horizontal scroll on open.
+   Cap the container and dropdown width to the row it lives in so the
+   absolutely-positioned popup can't extend past the viewport. */
+.app-form-card .select2-container { max-width: 100% !important; }
+.select2-container .select2-dropdown { max-width: 100vw !important; box-sizing: border-box; }
+/* Belt-and-suspenders: kill any accidental horizontal overflow on the
+   layout wrappers this page renders inside. */
+html, body { overflow-x: hidden; }
 .app-form-card textarea.form-control {
     min-height: auto !important;
     line-height: 1.4 !important;
