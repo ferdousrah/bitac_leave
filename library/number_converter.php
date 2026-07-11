@@ -178,10 +178,3 @@ function bn2enNumber ($number){
 
     return $en_number;
 }
-
-
-
-
-
-?>
-
