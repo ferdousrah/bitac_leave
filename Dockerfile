@@ -36,7 +36,10 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Enable Apache modules
 RUN a2enmod rewrite headers
 
-# PHP config — production-friendly, large file uploads, sane error handling
+# PHP config — production-friendly, large file uploads, sane error handling.
+# display_errors=Off is critical: DataTables/JSON APIs would otherwise get
+# HTML warnings prepended to their JSON responses (breaking the parser with
+# "Unexpected token '<'"). Errors still get logged.
 RUN { \
         echo 'upload_max_filesize=10M'; \
         echo 'post_max_size=12M'; \
@@ -44,6 +47,10 @@ RUN { \
         echo 'memory_limit=256M'; \
         echo 'date.timezone=Asia/Dhaka'; \
         echo 'session.gc_maxlifetime=7200'; \
+        echo 'display_errors=Off'; \
+        echo 'display_startup_errors=Off'; \
+        echo 'log_errors=On'; \
+        echo 'error_log=/var/log/apache2/php_errors.log'; \
     } > /usr/local/etc/php/conf.d/app.ini
 
 # Apache: set DocumentRoot to project root, allow .htaccess
