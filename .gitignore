@@ -19,9 +19,12 @@
 /php_errors.log
 *.log
 
-# ── Database dumps (large) ─────────────────────────────────────────────
+# ── Database dumps + transfer bundles (large + contain PII) ────────────
+*.sql
 *.sql.gz
 backup_*.sql
+uploads_transfer.zip
+*_transfer.zip
 
 # ── Editor / OS ────────────────────────────────────────────────────────
 .vscode/
