@@ -28,11 +28,12 @@ $columns = [
 ];
 
 // ── Resolve user's org & employee_id ──────────────────
-$orgStmt = $con->prepare("SELECT isCenterAdmin, organization_id, employee_id FROM user_list WHERE user_id = ?");
+$orgStmt = $con->prepare("SELECT isCenterAdmin, organization_id, employee_id, user_group_id FROM user_list WHERE user_id = ?");
 $orgStmt->bind_param("s", $_SESSION['username']);
 $orgStmt->execute();
 $orgUserRow = $orgStmt->get_result()->fetch_assoc();
 $orgStmt->close();
+$isSuperAdmin = (int)($orgUserRow['user_group_id'] ?? 0) === 1;
 if (!empty($orgUserRow['isCenterAdmin'])) {
     $userOrgID = (int)$orgUserRow['organization_id'];
     $userEmpID = (int)($orgUserRow['employee_id'] ?? 0);
@@ -47,6 +48,8 @@ if (!empty($orgUserRow['isCenterAdmin'])) {
     $userOrgID = 0;
     $userEmpID = 0;
 }
+// Super Admin bypass — always sees everything, matches menu-counts.php + page stat
+if ($isSuperAdmin) { $userOrgID = 0; }
 
 // Determine if the user is the org's default approver (legacy path).
 // New office-order rows carry an explicit override_signatory_id and are

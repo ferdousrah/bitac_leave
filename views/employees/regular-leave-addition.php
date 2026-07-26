@@ -2,13 +2,35 @@
 require_once(__DIR__ . '/../../includes/header_vuexy.php');
 require_once(__DIR__ . '/../../library/number_converter.php');
 
+// Viewer scope — Super Admin (user_group_id=1) always sees all; matches
+// fetch-regular-leave-addition-approval.php + menu-counts.php.
 $viewerOrgID  = (int)($getUserInfoQRW['organization_id'] ?? 0);
-$isSuperAdmin = empty($getUserInfoQRW['isCenterAdmin']) && $viewerOrgID === 0;
+$viewerEmpID  = (int)($getUserInfoQRW['employee_id']     ?? 0);
+$isSuperAdmin = (int)($getUserInfoQRW['user_group_id']   ?? 0) === 1;
 
-// Pending count (scoped to viewer's org)
-$scopeSql = $viewerOrgID > 0 ? " AND el.organization_id = $viewerOrgID" : "";
+// Is this user the org's default signatory (legacy override_signatory_id=NULL path)?
+$isOrgSignatory = false;
+if (!$isSuperAdmin && $viewerEmpID > 0 && $viewerOrgID > 0) {
+    $_sigQ = mysqli_prepare($con,
+        "SELECT 1 FROM leave_edit_approval_signatory
+         WHERE employeeID = ? AND organization_id = ? LIMIT 1");
+    mysqli_stmt_bind_param($_sigQ, 'ii', $viewerEmpID, $viewerOrgID);
+    mysqli_stmt_execute($_sigQ);
+    $isOrgSignatory = (bool)mysqli_fetch_assoc(mysqli_stmt_get_result($_sigQ));
+    mysqli_stmt_close($_sigQ);
+}
+
+// Pending count — same signatory scope as the fetch API (batch-distinct)
+if ($isSuperAdmin) {
+    $scopeSql = "";
+} elseif ($isOrgSignatory) {
+    $scopeSql = " AND (lah.override_signatory_id = $viewerEmpID
+                       OR (lah.override_signatory_id IS NULL AND el.organization_id = $viewerOrgID))";
+} else {
+    $scopeSql = " AND lah.override_signatory_id = $viewerEmpID";
+}
 $pendingCount = (int)(mysqli_fetch_assoc(mysqli_query($con,
-    "SELECT COUNT(*) AS c
+    "SELECT COUNT(DISTINCT COALESCE(lah.batch_id, CONCAT('_solo_', lah.dataID))) AS c
      FROM leave_addition_history lah
      INNER JOIN employee_list el ON lah.employeeID = el.id
      WHERE lah.isApproved = 0 $scopeSql"))['c'] ?? 0);
