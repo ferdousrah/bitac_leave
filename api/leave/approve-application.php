@@ -91,6 +91,13 @@ if ($action === 'decline') {
              'isImportant' => 1]);
     } catch (\Throwable $e) { /* silent */ }
 
+    if (function_exists('audit_log')) {
+        audit_log('leave_rejected', [
+            'target_type' => 'leave_application',
+            'target_id'   => (int)$leaveApplicationID,
+            'note'        => 'reason=' . mb_substr((string)$note, 0, 200),
+        ]);
+    }
     echo json_encode(['status' => 1, 'message' => 'আবেদনটি না মঞ্জুর করা হয়েছে।']);
     exit;
 }
@@ -213,8 +220,22 @@ if ($isLastSignatory) {
         }
     }
 
+    if (function_exists('audit_log')) {
+        audit_log('leave_approved', [
+            'target_type' => 'leave_application',
+            'target_id'   => (int)$leaveApplicationID,
+            'note'        => 'final; dates ' . $leaveFrom . ' → ' . $leaveTo,
+        ]);
+    }
     echo json_encode(['status' => 1, 'message' => 'ছুটির আবেদন চূড়ান্তভাবে অনুমোদিত হয়েছে।']);
 } else {
     $msg = $isSupervisor ? 'সুপারিশ সম্পন্ন হয়েছে।' : 'অনুমোদন সম্পন্ন হয়েছে।';
+    if (function_exists('audit_log')) {
+        audit_log($isSupervisor ? 'leave_recommended' : 'leave_chain_approved', [
+            'target_type' => 'leave_application',
+            'target_id'   => (int)$leaveApplicationID,
+            'note'        => 'chain-step; dates ' . $leaveFrom . ' → ' . $leaveTo,
+        ]);
+    }
     echo json_encode(['status' => 1, 'message' => $msg]);
 }

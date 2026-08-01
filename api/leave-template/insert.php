@@ -64,6 +64,13 @@ if (!$insertStmt) {
 mysqli_stmt_bind_param($insertStmt, "si", $templateData, $templateType);
 
 if (mysqli_stmt_execute($insertStmt)) {
+    if (function_exists('audit_log')) {
+        audit_log('leave_template_created', [
+            'target_type' => 'leave_templates',
+            'target_id'   => mysqli_insert_id($con),
+            'note'        => "type=$templateType",
+        ]);
+    }
     echo json_encode(['status' => 1, 'message' => 'টেম্পলেট সফলভাবে যোগ করা হয়েছে!']);
 } else {
     echo json_encode(['status' => 0, 'message' => 'টেম্পলেট যোগ করতে ব্যর্থ হয়েছে!']);

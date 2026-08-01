@@ -73,6 +73,13 @@ if (!$insertStmt) {
 mysqli_stmt_bind_param($insertStmt, "si", $job_title_name, $display_order);
 
 if (mysqli_stmt_execute($insertStmt)) {
+    if (function_exists('audit_log')) {
+        audit_log('designation_created', [
+            'target_type' => 'job_title',
+            'target_id'   => mysqli_insert_id($con),
+            'note'        => 'name=' . mb_substr($job_title_name, 0, 100),
+        ]);
+    }
     echo json_encode(['status' => 1, 'message' => 'পদবী সফলভাবে যোগ করা হয়েছে!']);
 } else {
     echo json_encode(['status' => 0, 'message' => 'পদবী যোগ করতে ব্যর্থ হয়েছে!']);

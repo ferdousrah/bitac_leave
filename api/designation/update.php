@@ -80,6 +80,13 @@ mysqli_stmt_bind_param($updateStmt, "sii", $job_title_name, $display_order, $dat
 
 if (mysqli_stmt_execute($updateStmt)) {
     if (mysqli_stmt_affected_rows($updateStmt) > 0) {
+        if (function_exists('audit_log')) {
+            audit_log('designation_updated', [
+                'target_type' => 'job_title',
+                'target_id'   => $dataID,
+                'note'        => 'name=' . mb_substr($job_title_name, 0, 100),
+            ]);
+        }
         echo json_encode(['status' => 1, 'message' => 'পদবী সফলভাবে আপডেট করা হয়েছে!']);
     } else {
         // No rows affected could mean the data is the same or record doesn't exist

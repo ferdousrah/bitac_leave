@@ -40,6 +40,14 @@ if ($recordId > 0) {
 }
 
 if (mysqli_stmt_execute($stmt)) {
+    if (function_exists('audit_log')) {
+        audit_log($recordId > 0 ? 'signatory_updated' : 'signatory_created', [
+            'target_type'     => 'leave_approval_signatory',
+            'target_id'       => $recordId > 0 ? (int)$recordId : (int)mysqli_insert_id($con),
+            'organization_id' => (int)$centerId,
+            'note'            => "employeeID=$employeeID; mandatory=$isMandatory",
+        ]);
+    }
     echo json_encode(['status' => 1, 'message' => $msg]);
 } else {
     echo json_encode(['status' => 0, 'message' => 'সংরক্ষণে সমস্যা: ' . mysqli_error($con)]);

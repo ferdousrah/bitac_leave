@@ -58,6 +58,13 @@ if (!$insertStmt) {
 mysqli_stmt_bind_param($insertStmt, "s", $leaveTitle);
 
 if (mysqli_stmt_execute($insertStmt)) {
+    if (function_exists('audit_log')) {
+        audit_log('leave_type_created', [
+            'target_type' => 'leave_types',
+            'target_id'   => mysqli_insert_id($con),
+            'note'        => 'title=' . mb_substr($leaveTitle, 0, 100),
+        ]);
+    }
     echo json_encode(['status' => 1, 'message' => 'ছুটির প্রকার সফলভাবে যোগ করা হয়েছে!']);
 } else {
     echo json_encode(['status' => 0, 'message' => 'ছুটির প্রকার যোগ করতে ব্যর্থ হয়েছে!']);

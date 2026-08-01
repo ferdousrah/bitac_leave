@@ -37,6 +37,9 @@ mysqli_stmt_bind_param($deleteStmt, "i", $dataID);
 
 if (mysqli_stmt_execute($deleteStmt)) {
     if (mysqli_stmt_affected_rows($deleteStmt) > 0) {
+        if (function_exists('audit_log')) {
+            audit_log('leave_template_deleted', ['target_type' => 'leave_templates', 'target_id' => $dataID]);
+        }
         echo json_encode(['status' => 1, 'message' => 'টেম্পলেট সফলভাবে মুছে ফেলা হয়েছে!']);
     } else {
         echo json_encode(['status' => 0, 'message' => 'টেম্পলেট খুঁজে পাওয়া যায়নি!']);

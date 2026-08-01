@@ -90,6 +90,14 @@ foreach ($ids as $dataID) {
     $approved++;
 }
 
+if (function_exists('audit_log')) {
+    audit_log('leave_bulk_approved_asis', [
+        'target_type' => 'leave_application',
+        'target_id'   => 0,
+        'note'        => "approved=$approved; skipped=$skipped; errors=" . count($errors),
+    ]);
+}
+
 echo json_encode([
     'success'  => true,
     'approved' => $approved,

@@ -14,6 +14,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute();
     }
 
+    if (function_exists('audit_log')) {
+        audit_log('signatory_order_reshuffled', [
+            'target_type' => 'leave_approval_signatory',
+            'target_id'   => 0,
+            'note'        => 'rows=' . count($order),
+        ]);
+    }
     echo json_encode(["status" => "success"]);
 } else {
     echo json_encode(["status" => "error", "message" => "Invalid request"]);

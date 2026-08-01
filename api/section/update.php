@@ -80,6 +80,13 @@ mysqli_stmt_bind_param($updateStmt, "sii", $section_name, $display_order, $dataI
 
 if (mysqli_stmt_execute($updateStmt)) {
     if (mysqli_stmt_affected_rows($updateStmt) > 0) {
+        if (function_exists('audit_log')) {
+            audit_log('section_updated', [
+                'target_type' => 'sections',
+                'target_id'   => $dataID,
+                'note'        => 'name=' . mb_substr($section_name, 0, 100),
+            ]);
+        }
         echo json_encode(['status' => 1, 'message' => 'শাখা সফলভাবে আপডেট করা হয়েছে!']);
     } else {
         // No rows affected could mean the data is the same or record doesn't exist

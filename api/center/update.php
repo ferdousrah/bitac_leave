@@ -46,6 +46,13 @@ if ($updateStmt) {
 
     if (mysqli_stmt_execute($updateStmt)) {
         if (mysqli_stmt_affected_rows($updateStmt) > 0) {
+            if (function_exists('audit_log')) {
+                audit_log('center_updated', [
+                    'target_type' => 'organization',
+                    'target_id'   => $dataID,
+                    'note'        => 'name=' . mb_substr($organization_name, 0, 100),
+                ]);
+            }
             echo json_encode(['status' => 1, 'message' => 'প্রতিষ্ঠান/কেন্দ্র সফলভাবে আপডেট করা হয়েছে!']);
         } else {
             echo json_encode(['status' => 0, 'message' => 'কোন পরিবর্তন করা হয়নি বা প্রতিষ্ঠান/কেন্দ্র খুঁজে পাওয়া যায়নি!']);

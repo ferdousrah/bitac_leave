@@ -123,6 +123,13 @@ if ($existing) {
 }
 
 if ($stmt->execute()) {
+    if (function_exists('audit_log')) {
+        audit_log('previous_leave_recorded', [
+            'target_type' => 'previous_leave_deduction',
+            'target_id'   => (int)$employeeID,
+            'note'        => "avg=$avgSalary; half=$halfAvgSalary; casual=$casual; unpaid=$leaveWithoutPay",
+        ]);
+    }
     echo json_encode(['status' => 'success', 'message' => 'তথ্য সফলভাবে সংরক্ষণ করা হয়েছে।']);
 } else {
     error_log("Previous leave save error: " . $stmt->error);

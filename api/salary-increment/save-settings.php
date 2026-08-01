@@ -119,6 +119,14 @@ if (isset($_POST['copyTo']) && is_array($_POST['copyTo'])) {
     }
 }
 
+if (function_exists('audit_log')) {
+    audit_log('increment_settings_saved', [
+        'target_type'     => 'increment_settings',
+        'target_id'       => (int)$organization_id,
+        'organization_id' => (int)$organization_id,
+    ]);
+}
+
 echo json_encode(['status' => 1, 'message' => 'বেতন বৃদ্ধির সেটিংস সফলভাবে সংরক্ষণ করা হয়েছে!']);
 mysqli_close($con);
 ?>

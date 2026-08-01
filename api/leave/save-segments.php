@@ -262,6 +262,14 @@ try {
 
     mysqli_commit($con);
 
+    if (function_exists('audit_log')) {
+        audit_log('leave_segments_edited', [
+            'target_type' => 'leave_application',
+            'target_id'   => (int)$applicationID,
+            'note'        => "added=$added; updated=$updated; removed=$removed; sigLevel=$signatoryLevel",
+        ]);
+    }
+
     reply(true, ['updated' => $updated, 'added' => $added, 'removed' => $removed]);
 
 } catch (Exception $e) {

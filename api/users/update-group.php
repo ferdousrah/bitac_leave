@@ -80,6 +80,13 @@ mysqli_stmt_bind_param($updateStmt, "sii", $group_name, $display_order, $dataID)
 
 if (mysqli_stmt_execute($updateStmt)) {
     if (mysqli_stmt_affected_rows($updateStmt) > 0) {
+        if (function_exists('audit_log')) {
+            audit_log('user_group_updated', [
+                'target_type' => 'user_group',
+                'target_id'   => (int)$dataID,
+                'note'        => 'name=' . mb_substr($group_name, 0, 80),
+            ]);
+        }
         echo json_encode(['status' => 1, 'message' => 'ব্যবহারকারী গ্রুপ সফলভাবে আপডেট করা হয়েছে!']);
     } else {
         // No rows affected could mean the data is the same or record doesn't exist

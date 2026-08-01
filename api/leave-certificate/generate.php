@@ -282,12 +282,26 @@ try {
         }
 
         if ($successCount > 0) {
+            if (function_exists('audit_log')) {
+                audit_log('leave_certificate_generated_bulk', [
+                    'target_type' => 'yearly_leave_summary',
+                    'target_id'   => 0,
+                    'note'        => "year=$incrementYear; count=$successCount/$totalCount; sig=$signatory",
+                ]);
+            }
             echo json_encode(['status' => 1, 'message' => "সকল কর্মচারীর ({$successCount}/{$totalCount}) সার্টিফিকেট সফলভাবে তৈরি করা হয়েছে!"]);
         } else {
             echo json_encode(['status' => 0, 'message' => 'সার্টিফিকেট তৈরি করতে ব্যর্থ হয়েছে!']);
         }
     } else {
         if (generateCertificate($con, $employeeID, $incrementYear, $certificateDateFormatted, $noticeDateFormatted, $signatory, $signatoryDesignation, $signatoryCenterID, $creationDate, $copyToArray, $casualStart, $casualEnd)) {
+            if (function_exists('audit_log')) {
+                audit_log('leave_certificate_generated', [
+                    'target_type' => 'yearly_leave_summary',
+                    'target_id'   => (int)$employeeID,
+                    'note'        => "year=$incrementYear; sig=$signatory",
+                ]);
+            }
             echo json_encode(['status' => 1, 'message' => 'সার্টিফিকেট সফলভাবে তৈরি করা হয়েছে!']);
         } else {
             echo json_encode(['status' => 0, 'message' => 'সার্টিফিকেট তৈরি করতে ব্যর্থ হয়েছে!']);

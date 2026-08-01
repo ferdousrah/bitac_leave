@@ -47,6 +47,13 @@ if ($relatedCount > 0) {
         $updateStmt->execute();
         if ($updateStmt->affected_rows > 0) {
             error_log("Soft delete successful for ID: $dataID");
+            if (function_exists('audit_log')) {
+                audit_log('employee_deleted', [
+                    'target_type' => 'employee_list',
+                    'target_id'   => (int)$dataID,
+                    'note'        => 'mode=soft; related_leave=' . $relatedCount,
+                ]);
+            }
             echo 1;
         } else {
             // Check if already inactive
@@ -78,6 +85,13 @@ if ($stmt) {
     if ($stmt->execute()) {
         if ($stmt->affected_rows > 0) {
             error_log("Hard delete successful for ID: $dataID");
+            if (function_exists('audit_log')) {
+                audit_log('employee_deleted', [
+                    'target_type' => 'employee_list',
+                    'target_id'   => (int)$dataID,
+                    'note'        => 'mode=hard',
+                ]);
+            }
             echo 1;
         } else {
             error_log("Delete failed: No rows affected. Employee ID may not exist: " . $dataID);
@@ -95,6 +109,13 @@ if ($stmt) {
             $softStmt->execute();
             if ($softStmt->affected_rows > 0) {
                 error_log("Soft delete successful for ID: $dataID");
+                if (function_exists('audit_log')) {
+                    audit_log('employee_deleted', [
+                        'target_type' => 'employee_list',
+                        'target_id'   => (int)$dataID,
+                        'note'        => 'mode=soft; fallback_after_fk_fail',
+                    ]);
+                }
                 echo 1;
             } else {
                 error_log("Soft delete also failed for ID: $dataID");

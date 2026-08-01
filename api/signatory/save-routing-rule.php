@@ -82,6 +82,13 @@ if ($ruleId > 0) {
 }
 
 if (mysqli_stmt_execute($stmt)) {
+    if (function_exists('audit_log')) {
+        audit_log('signatory_routing_rule_saved', [
+            'target_type' => 'leave_signatory_rule',
+            'target_id'   => isset($id) && $id > 0 ? (int)$id : (int)mysqli_insert_id($con),
+            'note'        => "route=$route; grades=$gradesStr",
+        ]);
+    }
     $resp = ['status' => 1, 'message' => $msg];
     if ($conflictMsg) $resp['warning'] = $conflictMsg;
     echo json_encode($resp);

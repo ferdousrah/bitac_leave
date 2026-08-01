@@ -44,6 +44,14 @@ if ($insertStmt) {
     mysqli_stmt_bind_param($insertStmt, "sss", $organization_name, $address, $phone);
 
     if (mysqli_stmt_execute($insertStmt)) {
+        $newId = mysqli_insert_id($con);
+        if (function_exists('audit_log')) {
+            audit_log('center_created', [
+                'target_type' => 'organization',
+                'target_id'   => $newId,
+                'note'        => 'name=' . mb_substr($organization_name, 0, 100),
+            ]);
+        }
         echo json_encode(['status' => 1, 'message' => 'প্রতিষ্ঠান/কেন্দ্র সফলভাবে যোগ করা হয়েছে!']);
     } else {
         echo json_encode(['status' => 0, 'message' => 'ডাটাবেস ত্রুটি: ' . mysqli_error($con)]);

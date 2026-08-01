@@ -45,13 +45,20 @@ if($updateSignature == 1){
 
 	if($updateLeaveJoiningApplicationQ == 1){
 
+		if (function_exists('audit_log')) {
+			audit_log('leave_declined', [
+				'target_type' => 'leave_application',
+				'target_id'   => (int)$leaveApplicationID,
+				'note'        => 'reason=' . mb_substr((string)$note, 0, 200),
+			]);
+		}
 		echo 1;
-	
-	
+
+
 	}else{
-	
+
 		echo 0;
-	
+
 	}
 
 

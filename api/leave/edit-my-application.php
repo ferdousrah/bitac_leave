@@ -438,6 +438,13 @@ if(in_array($file_ext,$extensions)== false){
 
 		}
 
+		if (function_exists("audit_log")) {
+			audit_log("leave_self_edited", [
+				"target_type" => "leave_application",
+				"target_id"   => (int)$dataID,
+				"note"        => "applicant re-submitted; chain reset",
+			]);
+		}
 		echo "<div class='alert alert-success'><strong>Success!</strong> আপনার সংশোধিত ছুটির আবেদনটি অনুমোদনের জন্য যথাযথ কর্তৃপক্ষের কাছে প্রেরণ করা হয়েছে ।</div>";
 
 

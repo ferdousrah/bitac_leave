@@ -38,4 +38,12 @@ if ($orgId) {
     }
 }
 
+if (function_exists('audit_log')) {
+    audit_log('signatory_mandatory_toggled', [
+        'target_type'     => 'leave_approval_signatory',
+        'target_id'       => $dataID,
+        'organization_id' => $orgId ?: null,
+        'note'            => "value=$value",
+    ]);
+}
 echo json_encode(['status' => 1]);

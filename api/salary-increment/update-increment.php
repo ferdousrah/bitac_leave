@@ -176,6 +176,14 @@ try {
     // Commit transaction
     mysqli_commit($con);
 
+    if (function_exists('audit_log')) {
+        audit_log('increment_updated', [
+            'target_type' => 'increment_data_update_permission',
+            'target_id'   => (int)$employeeID,
+            'note'        => "year=$incrementYear",
+        ]);
+    }
+
     echo json_encode([
         'status' => 1,
         'message' => 'ডেটা সফলভাবে সংরক্ষিত হয়েছে!'

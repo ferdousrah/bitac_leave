@@ -67,6 +67,13 @@ try {
         if (file_exists($path)) @unlink($path);
     }
 
+    if (function_exists('audit_log')) {
+        audit_log('leave_cancelled', [
+            'target_type' => 'leave_application',
+            'target_id'   => $applicationID,
+            'note'        => 'cancelled_by_applicant',
+        ]);
+    }
     echo 1;
 } catch (Exception $e) {
     mysqli_rollback($con);

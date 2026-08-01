@@ -36,6 +36,14 @@ if($checkPersonExistQNumRows > 0){
 
 		if($insertQuery == 1)
 		{
+			if (function_exists('audit_log')) {
+				audit_log('signatory_created_legacy', [
+					'target_type'     => 'leave_approval_signatory',
+					'target_id'       => (int)mysqli_insert_id($con),
+					'organization_id' => (int)$organization_id,
+					'note'            => "designation=$designationID; SL=$approvalSL",
+				]);
+			}
 			echo 1;
 		}
 		else

@@ -147,14 +147,21 @@ if($isApproved == 1 && $loggedUserID == $lasrSig){
 
 			$insertNotificationQ = mysqli_query($con, "insert into notification(userID, message, link, dateTime) values('$getApplicantUserDetailsQRW[dataID]', '$notimsg', '$notilink', '$dateTime')");
 		
-		
-		
+
+
 		}
 
 
+		if (function_exists('audit_log')) {
+			audit_log('joining_finalized', [
+				'target_type' => 'leave_joining',
+				'target_id'   => (int)$leaveApplicationID,
+				'note'        => 'legacy path; joiningDate=' . $dateTo,
+			]);
+		}
 		echo 1;
-	
-	
+
+
 	}
 
 
@@ -169,9 +176,16 @@ if($isApproved == 1 && $loggedUserID == $lasrSig){
 		//echo "<script>alert('Success')</script>";
 		//echo "<script>window.location='leave_approval?menuslug=leave-approval'</script>";
 
+		if (function_exists('audit_log')) {
+			audit_log('joining_chain_approved', [
+				'target_type' => 'leave_joining',
+				'target_id'   => (int)$leaveApplicationID,
+				'note'        => 'legacy path; joiningDate=' . $dateTo,
+			]);
+		}
 		echo 1;
-	
-	
+
+
 	}
 
 

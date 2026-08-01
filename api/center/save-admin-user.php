@@ -64,6 +64,14 @@ if ($adminUserDataID === 0) {
         $a->bind_param("i", $newID);
         $a->execute();
         $a->close();
+        if (function_exists('audit_log')) {
+            audit_log('center_admin_created', [
+                'target_type'     => 'user_list',
+                'target_id'       => $newID,
+                'organization_id' => $centerID,
+                'note'            => "username=$username; centerID=$centerID",
+            ]);
+        }
         echo json_encode(['status' => 1, 'message' => 'অ্যাডমিন ব্যবহারকারী সফলভাবে সংরক্ষণ করা হয়েছে!', 'dataID' => $newID]);
     } else {
         echo json_encode(['status' => 0, 'message' => 'ডাটাবেস ত্রুটি: ' . $con->error]);
@@ -106,6 +114,14 @@ if ($adminUserDataID === 0) {
         $upsert->bind_param("i", $adminUserDataID);
         $upsert->execute();
         $upsert->close();
+        if (function_exists('audit_log')) {
+            audit_log('center_admin_updated', [
+                'target_type'     => 'user_list',
+                'target_id'       => $adminUserDataID,
+                'organization_id' => $centerID,
+                'note'            => "username=$username; passwordChanged=" . ($password ? '1' : '0'),
+            ]);
+        }
         echo json_encode(['status' => 1, 'message' => 'অ্যাডমিন ব্যবহারকারী সফলভাবে আপডেট করা হয়েছে!']);
     } else {
         echo json_encode(['status' => 0, 'message' => 'ডাটাবেস ত্রুটি: ' . $con->error]);

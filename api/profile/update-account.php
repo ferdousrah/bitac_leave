@@ -80,6 +80,13 @@ $updateQuery = 1;
 
 if($updateQuery==1)
 {
+	if (function_exists('audit_log')) {
+		audit_log('account_updated', [
+			'target_type' => 'user_list',
+			'target_id'   => (int)$dataID,
+			'note'        => 'password / photo / signature via account page',
+		]);
+	}
 	echo 1;
 }
 else

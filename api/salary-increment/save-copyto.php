@@ -70,6 +70,14 @@ try {
     // Commit transaction
     mysqli_commit($con);
 
+    if (function_exists('audit_log')) {
+        audit_log('increment_copyto_saved', [
+            'target_type' => 'salary_notice_copy',
+            'target_id'   => (int)$employeeID,
+            'note'        => "count=$insertCount",
+        ]);
+    }
+
     echo json_encode([
         'status' => 1,
         'message' => 'অনুলিপি সেটিংস সফলভাবে সংরক্ষিত হয়েছে! মোট ' . $insertCount . ' জন যুক্ত করা হয়েছে।'

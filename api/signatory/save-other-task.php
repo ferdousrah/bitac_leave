@@ -53,6 +53,13 @@ if ($recordId > 0) {
 }
 
 if (mysqli_stmt_execute($stmt)) {
+    if (function_exists('audit_log')) {
+        audit_log('signatory_other_task_saved', [
+            'target_type'     => 'leave_edit_approval_signatory',
+            'target_id'       => (int)$employeeID,
+            'organization_id' => (int)$centerId,
+        ]);
+    }
     echo json_encode(['status' => 1, 'message' => 'সিগনেটরি সফলভাবে সংরক্ষণ করা হয়েছে।']);
 } else {
     echo json_encode(['status' => 0, 'message' => 'সংরক্ষণে সমস্যা হয়েছে: ' . mysqli_error($con)]);

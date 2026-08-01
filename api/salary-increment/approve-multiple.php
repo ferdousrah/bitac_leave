@@ -131,6 +131,13 @@ try {
     mysqli_commit($con);
 
     if ($successCount > 0) {
+        if (function_exists('audit_log')) {
+            audit_log('increment_bulk_approved', [
+                'target_type' => 'yearly_salary_increment',
+                'target_id'   => 0,
+                'note'        => "approved=$successCount; errors=$errorCount",
+            ]);
+        }
         echo json_encode([
             'status' => 1,
             'message' => 'মোট ' . $successCount . ' টি সফলভাবে অনুমোদিত হয়েছে!' . ($errorCount > 0 ? ' (' . $errorCount . ' টি ব্যর্থ হয়েছে)' : '')

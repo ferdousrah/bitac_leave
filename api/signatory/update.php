@@ -13,6 +13,14 @@ $updateQuery = mysqli_query($con, "update leave_approval_signatory set `organiza
 
 if($updateQuery == 1)
 {
+	if (function_exists('audit_log')) {
+		audit_log('signatory_updated_legacy', [
+			'target_type'     => 'leave_approval_signatory',
+			'target_id'       => (int)$dataID,
+			'organization_id' => (int)$organization_id,
+			'note'            => "designation=$designationID; mandatory=$isMandatory",
+		]);
+	}
 	echo 1;
 }
 else

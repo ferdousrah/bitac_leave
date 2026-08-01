@@ -95,6 +95,13 @@ try {
     // Commit transaction
     mysqli_commit($con);
 
+    if (function_exists('audit_log')) {
+        audit_log($isApproved == 1 ? 'increment_change_approved' : 'increment_change_rejected', [
+            'target_type' => 'increment_data_update_permission',
+            'target_id'   => (int)$dataID,
+        ]);
+    }
+
     $message = $isApproved == 1 ? 'পরিবর্তন সফলভাবে অনুমোদন করা হয়েছে!' : 'পরিবর্তন সফলভাবে বাতিল করা হয়েছে!';
     echo json_encode(['status' => 1, 'message' => $message]);
 

@@ -190,6 +190,16 @@ if ($stmt) {
             $hStmt->close();
         }
 
+        if (function_exists('audit_log')) {
+            audit_log('employee_created', [
+                'target_type'     => 'employee_list',
+                'target_id'       => $newID,
+                'organization_id' => (int)$organization_id,
+                'note'            => "name=" . mb_substr((string)$employee_name, 0, 80)
+                                   . "; empID=" . mb_substr((string)$employee_id, 0, 30)
+                                   . "; type=$entry_type",
+            ]);
+        }
         echo 1;
     } else {
         error_log("Employee insert error: " . $stmt->error);

@@ -129,4 +129,18 @@ if (!mysqli_stmt_execute($stmt)) {
 }
 mysqli_stmt_close($stmt);
 
+if (function_exists('audit_log')) {
+    // Audit only for meaningful changes (logo upload / color-palette save).
+    // Note the changed field list rather than the raw values to keep the log lean.
+    $changedFields = array_keys($values);
+    audit_log(
+        in_array('header_logo', $changedFields, true) ? 'theme_logo_updated' : 'theme_settings_updated',
+        [
+            'target_type' => 'template_settings',
+            'target_id'   => 1,
+            'note'        => 'fields=' . implode(',', $changedFields),
+        ]
+    );
+}
+
 reply(true, ['message' => 'সেভ হয়েছে', 'updated' => count($values)]);

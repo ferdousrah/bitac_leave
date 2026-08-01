@@ -113,6 +113,13 @@ try {
     // Commit transaction
     mysqli_commit($con);
 
+    if (function_exists('audit_log')) {
+        audit_log($isApproved == 1 ? 'increment_approved' : 'increment_rejected', [
+            'target_type' => 'increment_data_for_approval',
+            'target_id'   => (int)$dataID,
+        ]);
+    }
+
     $message = ($isApproved == 1) ? 'সফলভাবে অনুমোদিত হয়েছে!' : 'সফলভাবে বাতিল করা হয়েছে!';
     echo json_encode(['status' => 1, 'message' => $message]);
 

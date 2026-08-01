@@ -223,6 +223,16 @@ $insertEmployeeInfoQ = mysqli_query($con, "update `employee_list` set `employee_
 
 if($insertEmployeeInfoQ == 1) {
 
+	if (function_exists('audit_log')) {
+		audit_log('employee_updated', [
+			'target_type'     => 'employee_list',
+			'target_id'       => (int)$dataID,
+			'organization_id' => (int)$organization_id,
+			'note'            => 'name=' . mb_substr((string)$employee_name, 0, 80)
+			                    . '; empID=' . mb_substr((string)$employee_id, 0, 30)
+			                    . '; status=' . $employment_status,
+		]);
+	}
 	echo 1;
 
 } else {

@@ -64,6 +64,14 @@ try {
     // Commit transaction
     mysqli_commit($con);
 
+    if (function_exists('audit_log')) {
+        audit_log('group_permissions_saved', [
+            'target_type' => 'group_access_permission',
+            'target_id'   => (int)$groupId,
+            'note'        => 'permission matrix updated',
+        ]);
+    }
+
     echo json_encode(['status' => 1, 'message' => 'পারমিশন সফলভাবে সংরক্ষণ করা হয়েছে!']);
 
 } catch (Exception $e) {

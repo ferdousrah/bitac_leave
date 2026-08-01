@@ -105,6 +105,13 @@ try {
     mysqli_commit($con);
 
     if ($successCount > 0) {
+        if (function_exists('audit_log')) {
+            audit_log('increment_submitted_for_approval', [
+                'target_type' => 'increment_data_for_approval',
+                'target_id'   => 0,
+                'note'        => "count=$successCount",
+            ]);
+        }
         echo json_encode([
             'status' => 1,
             'message' => 'ডেটা সফলভাবে সংরক্ষিত হয়েছে! মোট ' . $successCount . ' জন কর্মচারীর জন্য।'

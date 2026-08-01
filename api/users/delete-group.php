@@ -42,6 +42,9 @@ if ($hasDeletedColumn) {
 
     if (mysqli_stmt_execute($deleteStmt)) {
         if (mysqli_stmt_affected_rows($deleteStmt) > 0) {
+            if (function_exists('audit_log')) {
+                audit_log('user_group_deleted', ['target_type' => 'user_group', 'target_id' => (int)$dataID]);
+            }
             echo json_encode(['status' => 1, 'message' => 'ব্যবহারকারী গ্রুপ সফলভাবে মুছে ফেলা হয়েছে!']);
         } else {
             echo json_encode(['status' => 0, 'message' => 'ব্যবহারকারী গ্রুপ খুঁজে পাওয়া যায়নি!']);
@@ -65,6 +68,9 @@ if ($hasDeletedColumn) {
 
     if (mysqli_stmt_execute($deleteStmt)) {
         if (mysqli_stmt_affected_rows($deleteStmt) > 0) {
+            if (function_exists('audit_log')) {
+                audit_log('user_group_deleted', ['target_type' => 'user_group', 'target_id' => (int)$dataID]);
+            }
             echo json_encode(['status' => 1, 'message' => 'ব্যবহারকারী গ্রুপ সফলভাবে মুছে ফেলা হয়েছে!']);
         } else {
             echo json_encode(['status' => 0, 'message' => 'ব্যবহারকারী গ্রুপ খুঁজে পাওয়া যায়নি!']);

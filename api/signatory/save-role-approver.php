@@ -60,4 +60,10 @@ if (!$ins->execute()) {
 }
 $ins->close();
 
+if (function_exists('audit_log')) {
+    audit_log('role_approver_saved', [
+        'target_type' => 'role_approvers',
+        'target_id'   => (int)$approverUserID,
+    ]);
+}
 echo json_encode(['status' => 1, 'message' => 'অনুমোদনকারী সংরক্ষণ করা হয়েছে']);

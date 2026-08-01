@@ -56,6 +56,14 @@ if ($groupId !== null) {
     mysqli_stmt_close($ins);
 }
 
+if (function_exists('audit_log')) {
+    audit_log('user_group_assigned', [
+        'target_type' => 'user_group_assignment',
+        'target_id'   => (int)$userId,
+        'note'        => 'default_group=' . ($groupId ?? 'none'),
+    ]);
+}
+
 echo json_encode(['status' => 1, 'message' => 'গ্রুপ সফলভাবে বরাদ্দ করা হয়েছে!']);
 mysqli_close($con);
 ?>

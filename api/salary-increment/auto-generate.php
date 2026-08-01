@@ -145,6 +145,13 @@ try {
     mysqli_commit($con);
 
     if ($successCount > 0) {
+        if (function_exists('audit_log')) {
+            audit_log('increment_auto_generated', [
+                'target_type' => 'yearly_salary_increment',
+                'target_id'   => 0,
+                'note'        => "year=$incrementYear; count=$successCount",
+            ]);
+        }
         echo json_encode([
             'status' => 1,
             'message' => 'বেতন বৃদ্ধি সফলভাবে তৈরি করা হয়েছে! মোট ' . $successCount . ' জন কর্মচারীর জন্য।'

@@ -37,6 +37,9 @@ mysqli_stmt_bind_param($deleteStmt, "i", $dataID);
 
 if (mysqli_stmt_execute($deleteStmt)) {
     if (mysqli_stmt_affected_rows($deleteStmt) > 0) {
+        if (function_exists('audit_log')) {
+            audit_log('leave_type_deleted', ['target_type' => 'leave_types', 'target_id' => $dataID]);
+        }
         echo json_encode(['status' => 1, 'message' => 'ছুটির প্রকার সফলভাবে মুছে ফেলা হয়েছে!']);
     } else {
         echo json_encode(['status' => 0, 'message' => 'ছুটির প্রকার খুঁজে পাওয়া যায়নি!']);

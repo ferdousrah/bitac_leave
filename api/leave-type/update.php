@@ -65,6 +65,13 @@ mysqli_stmt_bind_param($updateStmt, "si", $leaveTitle, $dataID);
 
 if (mysqli_stmt_execute($updateStmt)) {
     if (mysqli_stmt_affected_rows($updateStmt) > 0) {
+        if (function_exists('audit_log')) {
+            audit_log('leave_type_updated', [
+                'target_type' => 'leave_types',
+                'target_id'   => $dataID,
+                'note'        => 'title=' . mb_substr($leaveTitle, 0, 100),
+            ]);
+        }
         echo json_encode(['status' => 1, 'message' => 'ছুটির প্রকার সফলভাবে আপডেট করা হয়েছে!']);
     } else {
         echo json_encode(['status' => 1, 'message' => 'কোনো পরিবর্তন হয়নি!']);
