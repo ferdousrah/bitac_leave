@@ -217,9 +217,20 @@ function fetchNotifications() {
                 return;
             }
 
+            // Normalize a stored notification link into an absolute URL under
+            // BASE_URL. Stored links are relative paths (`views/leave/…`) —
+            // rendering them raw makes the browser resolve them against the
+            // CURRENT page, so from any /views/** page the link 404s.
+            function resolveLink(link) {
+                if (!link || link === 'javascript:void(0);') return 'javascript:void(0);';
+                if (/^(https?:)?\/\//i.test(link) || link.startsWith('javascript:')) return link;
+                const base = '<?php echo rtrim($baseURL, "/"); ?>';
+                return base + '/' + link.replace(/^\/+/, '');
+            }
+
             items.forEach((notif, idx) => {
                 const el = document.createElement('a');
-                el.href = notif.link || 'javascript:void(0);';
+                el.href = resolveLink(notif.link);
                 el.className = 'notif-item' + (notif.isRead ? '' : ' notif-item-unread');
                 el.dataset.notifId = notif.id;
                 el.style.animationDelay = (idx * 0.04) + 's';

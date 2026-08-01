@@ -173,6 +173,16 @@ $menuslug = htmlspecialchars($_GET['menuslug'] ?? 'notifications-all');
 
     function toBn(n) { return String(n).replace(/[0-9]/g, d => '০১২৩৪৫৬৭৮৯'[d]); }
 
+    // Normalize a stored notification link (usually a project-relative path
+    // like "views/leave/…") into an absolute URL under BASE_URL, so links
+    // work no matter where the notifications page itself lives.
+    function resolveLink(link) {
+        if (!link || link === 'javascript:void(0);') return 'javascript:void(0);';
+        if (/^(https?:)?\/\//i.test(link) || link.startsWith('javascript:')) return link;
+        const base = '<?php echo rtrim($baseURL, "/"); ?>';
+        return base + '/' + link.replace(/^\/+/, '');
+    }
+
     function iconFor(item) {
         const t = String(item.type || '').toLowerCase();
         const m = (item.message || '').toLowerCase();
@@ -198,7 +208,7 @@ $menuslug = htmlspecialchars($_GET['menuslug'] ?? 'notifications-all');
 
         listEl.innerHTML = items.map(item => {
             const ic = iconFor(item);
-            const href = item.link || 'javascript:void(0);';
+            const href = resolveLink(item.link);
             return `
                 <a href="${href}" class="notif-list-row ${item.isRead ? '' : 'is-unread'}" data-id="${item.id}">
                     <div class="notif-list-icon" style="background:${ic.bg}; color:${ic.col};">
