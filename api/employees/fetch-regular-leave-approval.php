@@ -11,12 +11,15 @@ ini_set('display_errors', 0);
 $request = $_REQUEST;
 
 // ── Resolve user's org & employee_id ──────────────────
-$orgStmt = $con->prepare("SELECT isCenterAdmin, organization_id, employee_id, user_group_id FROM user_list WHERE user_id = ?");
+// NOTE: no Super Admin bypass here on purpose — the approve endpoint (act.php)
+// only accepts the exact assigned signatory, so if the fetch returned rows
+// for Super Admin they'd see approve buttons that fail with "not the signatory".
+// Keep fetch strictly scoped so listing matches actionable permissions.
+$orgStmt = $con->prepare("SELECT isCenterAdmin, organization_id, employee_id FROM user_list WHERE user_id = ?");
 $orgStmt->bind_param("s", $_SESSION['username']);
 $orgStmt->execute();
 $orgUserRow = $orgStmt->get_result()->fetch_assoc();
 $orgStmt->close();
-$isSuperAdmin = (int)($orgUserRow['user_group_id'] ?? 0) === 1;
 if (!empty($orgUserRow['isCenterAdmin'])) {
     $userOrgID = (int)$orgUserRow['organization_id'];
     $userEmpID = (int)($orgUserRow['employee_id'] ?? 0);
@@ -31,8 +34,6 @@ if (!empty($orgUserRow['isCenterAdmin'])) {
     $userOrgID = 0;
     $userEmpID = 0;
 }
-// Super Admin bypass — always sees everything, matches menu-counts.php behaviour
-if ($isSuperAdmin) { $userOrgID = 0; }
 
 // Determine org-default signatory status (legacy path). New rows carry
 // override_signatory_id and route to whoever the submitter selected.

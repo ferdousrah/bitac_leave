@@ -43,9 +43,11 @@ if ($myEmpID > 0 && $myOrgID > 0) {
 }
 
 // ── Helper: signatory-scope clause for leave_addition_history / leave_deduction_history
-// Matches the logic in fetch-regular-leave-addition-approval.php / fetch-regular-leave-approval.php
-$sigScope = function($tblAlias, $empAlias) use ($myEmpID, $myOrgID, $isSuperAdmin, $isOrgSignatory) {
-    if ($isSuperAdmin) return '';
+// Matches the logic in fetch-regular-leave-addition-approval.php / fetch-regular-leave-approval.php.
+// NO Super Admin bypass — the approve endpoints only accept the actual assigned
+// signatory, so the badge must count only rows the user can actually action.
+$sigScope = function($tblAlias, $empAlias) use ($myEmpID, $myOrgID, $isOrgSignatory) {
+    if ($myEmpID <= 0) return " AND 1=0"; // no emp_id → cannot be a signatory anywhere
     if ($isOrgSignatory) {
         return " AND ($tblAlias.override_signatory_id = $myEmpID
                      OR ($tblAlias.override_signatory_id IS NULL AND $empAlias.organization_id = $myOrgID))";

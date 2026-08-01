@@ -2,15 +2,17 @@
 require_once(__DIR__ . '/../../includes/header_vuexy.php');
 require_once(__DIR__ . '/../../library/number_converter.php');
 
-// Viewer scope — Super Admin (user_group_id=1) always sees all; matches
-// fetch-regular-leave-addition-approval.php + menu-counts.php.
+// Signatory-scoped pending count — mirrors the fetch API (batch-distinct).
+// NO Super Admin bypass: the approve endpoint only accepts the assigned
+// signatory, so showing rows to non-signatories would produce clickable
+// buttons that fail with "not the signatory".
 $viewerOrgID  = (int)($getUserInfoQRW['organization_id'] ?? 0);
 $viewerEmpID  = (int)($getUserInfoQRW['employee_id']     ?? 0);
-$isSuperAdmin = (int)($getUserInfoQRW['user_group_id']   ?? 0) === 1;
+// Used only for filter dropdown visibility (center selector shows for super admin)
+$isSuperAdmin = empty($getUserInfoQRW['isCenterAdmin']) && $viewerOrgID === 0;
 
-// Is this user the org's default signatory (legacy override_signatory_id=NULL path)?
 $isOrgSignatory = false;
-if (!$isSuperAdmin && $viewerEmpID > 0 && $viewerOrgID > 0) {
+if ($viewerEmpID > 0 && $viewerOrgID > 0) {
     $_sigQ = mysqli_prepare($con,
         "SELECT 1 FROM leave_edit_approval_signatory
          WHERE employeeID = ? AND organization_id = ? LIMIT 1");
@@ -20,10 +22,7 @@ if (!$isSuperAdmin && $viewerEmpID > 0 && $viewerOrgID > 0) {
     mysqli_stmt_close($_sigQ);
 }
 
-// Pending count — same signatory scope as the fetch API (batch-distinct)
-if ($isSuperAdmin) {
-    $scopeSql = "";
-} elseif ($isOrgSignatory) {
+if ($isOrgSignatory) {
     $scopeSql = " AND (lah.override_signatory_id = $viewerEmpID
                        OR (lah.override_signatory_id IS NULL AND el.organization_id = $viewerOrgID))";
 } else {
