@@ -281,32 +281,20 @@ try {
     }
     mysqli_stmt_close($chainStmt);
 
-    // 5. Notification to supervisor
-    $supUserQ = mysqli_prepare($con, "SELECT dataID FROM user_list WHERE employee_id = ? LIMIT 1");
-    mysqli_stmt_bind_param($supUserQ, 'i', $supervisorID);
-    mysqli_stmt_execute($supUserQ);
-    $supUserRow = mysqli_fetch_assoc(mysqli_stmt_get_result($supUserQ));
-    mysqli_stmt_close($supUserQ);
-    if ($supUserRow) {
+    // 5. Notification to supervisor — via helper (auth-safe + silent-on-failure)
+    try {
         $applicantNameQ = mysqli_prepare($con, "SELECT employee_name FROM employee_list WHERE id = ?");
         mysqli_stmt_bind_param($applicantNameQ, 'i', $applicantID);
         mysqli_stmt_execute($applicantNameQ);
-        $apName = mysqli_fetch_assoc(mysqli_stmt_get_result($applicantNameQ))['employee_name'] ?? '';
+        $apName = mysqli_fetch_assoc(mysqli_stmt_get_result($applicantNameQ))['employee_name'] ?? 'কর্মচারী';
         mysqli_stmt_close($applicantNameQ);
 
-        $msg = $apName . ' কর্মস্থলে যোগদানের আবেদন করেছেন।';
-        $type = "<span class='badge badge-primary'>কর্মস্থলে যোগদান পত্র</span>";
-        $link = "views/leave/approve-joining-application.php?menuslug=leave-joining-approval&joiningID=" . $joiningID;
-        $dt = function_exists('ShowBangladeshTime') ? ShowBangladeshTime() : date('Y-m-d H:i:s');
-
-        $noteStmt = mysqli_prepare($con,
-            "INSERT INTO notification (userID, message, notificationType, link, dateTime, isImportant)
-             VALUES (?, ?, ?, ?, ?, 1)");
-        $supUserID = (int)$supUserRow['dataID'];
-        mysqli_stmt_bind_param($noteStmt, 'issss', $supUserID, $msg, $type, $link, $dt);
-        @mysqli_stmt_execute($noteStmt);
-        mysqli_stmt_close($noteStmt);
-    }
+        send_notification([user_id_for_employee($supervisorID)],
+            "$apName কর্মস্থলে যোগদানের আবেদন করেছেন — আপনার সুপারিশের অপেক্ষায়",
+            ['type' => 'joining_supervise_pending',
+             'link' => "views/leave/approve-joining-application.php?menuslug=leave-joining-approval&joiningID=" . $joiningID,
+             'isImportant' => 1]);
+    } catch (\Throwable $e) { /* silent */ }
 
     mysqli_commit($con);
     mysqli_autocommit($con, true);

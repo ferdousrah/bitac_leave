@@ -131,40 +131,27 @@ try {
     mysqli_stmt_close($fwdStmt);
 
     // 3. Notify the first chain signatory (first row with isSupervisor=0, lowest serial)
-    $firstSigStmt = mysqli_prepare($con,
-        "SELECT signatory FROM leave_joining_data_for_approval
-         WHERE leaveApplicationID = ? AND isSupervisor = 0
-         ORDER BY serial ASC LIMIT 1");
-    mysqli_stmt_bind_param($firstSigStmt, 'i', $leaveAppID);
-    mysqli_stmt_execute($firstSigStmt);
-    $firstSig = mysqli_fetch_assoc(mysqli_stmt_get_result($firstSigStmt));
-    mysqli_stmt_close($firstSigStmt);
+    try {
+        $firstSigStmt = mysqli_prepare($con,
+            "SELECT signatory FROM leave_joining_data_for_approval
+             WHERE leaveApplicationID = ? AND isSupervisor = 0
+             ORDER BY serial ASC LIMIT 1");
+        mysqli_stmt_bind_param($firstSigStmt, 'i', $leaveAppID);
+        mysqli_stmt_execute($firstSigStmt);
+        $firstSig = mysqli_fetch_assoc(mysqli_stmt_get_result($firstSigStmt));
+        mysqli_stmt_close($firstSigStmt);
 
-    if ($firstSig) {
-        $sigUserStmt = mysqli_prepare($con,
-            "SELECT dataID FROM user_list WHERE employee_id = ? LIMIT 1");
-        mysqli_stmt_bind_param($sigUserStmt, 'i', $firstSig['signatory']);
-        mysqli_stmt_execute($sigUserStmt);
-        $sigUser = mysqli_fetch_assoc(mysqli_stmt_get_result($sigUserStmt));
-        mysqli_stmt_close($sigUserStmt);
-
-        if ($sigUser) {
+        if ($firstSig) {
             $applicantQ = mysqli_query($con, "SELECT employee_name FROM employee_list WHERE id = " . (int)$lja['applicantID']);
-            $apName = ($applicantQ && $apRow = mysqli_fetch_assoc($applicantQ)) ? $apRow['employee_name'] : '';
+            $apName = ($applicantQ && $apRow = mysqli_fetch_assoc($applicantQ)) ? $apRow['employee_name'] : 'কর্মচারী';
 
-            $msg = $apName . ' কর্মস্থলে যোগদানের আবেদন অনুমোদনের জন্য আপনার কাছে পাঠানো হয়েছে।';
-            $type = "<span class='badge badge-primary'>কর্মস্থলে যোগদান পত্র</span>";
-            $link = "views/leave/approve-joining-application.php?menuslug=leave-joining-approval&joiningID=" . $joiningID;
-
-            $noteStmt = mysqli_prepare($con,
-                "INSERT INTO notification (userID, message, notificationType, link, dateTime, isImportant)
-                 VALUES (?, ?, ?, ?, ?, 1)");
-            $sigUserID = (int)$sigUser['dataID'];
-            mysqli_stmt_bind_param($noteStmt, 'issss', $sigUserID, $msg, $type, $link, $now);
-            @mysqli_stmt_execute($noteStmt);
-            mysqli_stmt_close($noteStmt);
+            send_notification([user_id_for_employee((int)$firstSig['signatory'])],
+                "$apName কর্মস্থলে যোগদানের আবেদন আপনার অনুমোদনের অপেক্ষায়",
+                ['type' => 'joining_pending',
+                 'link' => "views/leave/approve-joining-application.php?menuslug=leave-joining-approval&joiningID=" . $joiningID,
+                 'isImportant' => 1]);
         }
-    }
+    } catch (\Throwable $e) { /* silent */ }
 
     mysqli_commit($con);
     mysqli_autocommit($con, true);

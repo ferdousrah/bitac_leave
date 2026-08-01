@@ -355,6 +355,66 @@ try {
             ]);
         }
 
+        // ── Notifications ────────────────────────────────────────────
+        try {
+            $applicantID   = (int)$leaveApp['applicantID'];
+            $applName      = 'কর্মচারী';
+            $anQ = mysqli_prepare($con, "SELECT employee_name FROM employee_list WHERE id = ? LIMIT 1");
+            mysqli_stmt_bind_param($anQ, 'i', $applicantID);
+            mysqli_stmt_execute($anQ);
+            $applName = mysqli_fetch_assoc(mysqli_stmt_get_result($anQ))['employee_name'] ?? 'কর্মচারী';
+            mysqli_stmt_close($anQ);
+
+            if ($isFinal) {
+                // Notify applicant + all chain members that joining is finalized
+                $chQ = mysqli_query($con,
+                    "SELECT DISTINCT signatory FROM leave_joining_data_for_approval
+                     WHERE leaveApplicationID = $leaveAppID");
+                $chainEmpIDs = [];
+                if ($chQ) while ($r = mysqli_fetch_assoc($chQ)) $chainEmpIDs[] = (int)$r['signatory'];
+
+                send_notification([user_id_for_employee($applicantID)],
+                    "আপনার যোগদান পত্র চূড়ান্তভাবে অনুমোদিত হয়েছে",
+                    ['type' => 'joining_approved',
+                     'link' => "views/leave/all-applications.php?menuslug=all-leave-application",
+                     'isImportant' => 1]);
+
+                send_notification(user_ids_for_employees($chainEmpIDs),
+                    "$applName-এর যোগদান পত্র চূড়ান্তভাবে অনুমোদিত",
+                    ['type' => 'joining_approved',
+                     'link' => "views/leave/all-applications.php?menuslug=all-leave-application"]);
+            } elseif ($isSupervisorRow) {
+                // Supervisor recommended → notify center admin(s) of applicant's org
+                if ($appOrgID > 0) {
+                    $caQ = mysqli_query($con,
+                        "SELECT dataID FROM user_list
+                         WHERE isCenterAdmin = 1 AND organization_id = $appOrgID");
+                    $caIDs = [];
+                    if ($caQ) while ($r = mysqli_fetch_assoc($caQ)) $caIDs[] = (int)$r['dataID'];
+                    send_notification($caIDs,
+                        "$applName-এর যোগদান পত্র সুপারভাইজার-সুপারিশপ্রাপ্ত — সম্পাদনার অপেক্ষায়",
+                        ['type' => 'joining_supervisor_recommended',
+                         'link' => "views/leave/approve-joining-application.php?menuslug=leave-joining-approval&joiningID=" . $joiningID]);
+                }
+            } else {
+                // Mid-chain approve → notify next pending signatory
+                $nxtQ = mysqli_prepare($con,
+                    "SELECT signatory FROM leave_joining_data_for_approval
+                     WHERE leaveApplicationID = ? AND isApproved = 0 AND serial > ?
+                     ORDER BY serial ASC LIMIT 1");
+                mysqli_stmt_bind_param($nxtQ, 'ii', $leaveAppID, $mySerial);
+                mysqli_stmt_execute($nxtQ);
+                $nx = mysqli_fetch_assoc(mysqli_stmt_get_result($nxtQ)) ?: [];
+                mysqli_stmt_close($nxtQ);
+                if (!empty($nx['signatory'])) {
+                    send_notification([user_id_for_employee((int)$nx['signatory'])],
+                        "$applName-এর যোগদান পত্র আপনার অনুমোদনের অপেক্ষায়",
+                        ['type' => 'joining_pending',
+                         'link' => "views/leave/approve-joining-application.php?menuslug=leave-joining-approval&joiningID=" . $joiningID]);
+                }
+            }
+        } catch (\Throwable $e) { /* silent */ }
+
         out(1, $isFinal
             ? 'যোগদান চূড়ান্তভাবে অনুমোদিত — মূল ছুটির অংশসমূহ আপডেট হয়েছে'
             : ($isSupervisorRow ? 'সুপারিশ করা হয়েছে — পরবর্তী সাইনেটরির অপেক্ষায়' : 'অনুমোদিত — পরবর্তী সাইনেটরির অপেক্ষায়'),
@@ -390,6 +450,17 @@ try {
                 'note'            => 'reason=' . mb_substr($reason, 0, 200),
             ]);
         }
+
+        // Notify applicant of rejection
+        try {
+            $applicantID = (int)$leaveApp['applicantID'];
+            send_notification([user_id_for_employee($applicantID)],
+                "আপনার যোগদান পত্র প্রত্যাখ্যাত হয়েছে। কারণ: " . mb_substr($reason, 0, 120),
+                ['type' => 'joining_rejected',
+                 'link' => "views/leave/all-applications.php?menuslug=all-leave-application",
+                 'isImportant' => 1]);
+        } catch (\Throwable $e) { /* silent */ }
+
         out(1, 'প্রত্যাখ্যাত');
     }
 
@@ -428,6 +499,17 @@ try {
                 'note'            => 'returned_by=' . $actorEmpId . '; reason=' . mb_substr($reason, 0, 200),
             ]);
         }
+
+        // Notify applicant so they can resubmit
+        try {
+            $applicantID = (int)$leaveApp['applicantID'];
+            send_notification([user_id_for_employee($applicantID)],
+                "আপনার যোগদান পত্র ফেরত পাঠানো হয়েছে। কারণ: " . mb_substr($reason, 0, 120),
+                ['type' => 'joining_returned',
+                 'link' => "views/leave/all-applications.php?menuslug=all-leave-application",
+                 'isImportant' => 1]);
+        } catch (\Throwable $e) { /* silent */ }
+
         out(1, 'আবেদনকারীর কাছে ফেরত পাঠানো হয়েছে');
     }
 
