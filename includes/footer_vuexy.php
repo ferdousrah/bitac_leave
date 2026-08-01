@@ -221,11 +221,25 @@ function fetchNotifications() {
             // BASE_URL. Stored links are relative paths (`views/leave/…`) —
             // rendering them raw makes the browser resolve them against the
             // CURRENT page, so from any /views/** page the link 404s.
+            //
+            // Also rewrites legacy paths (old snake_case root-level files that
+            // don't exist anymore) to their modern equivalents. Handles ~28k
+            // historical notification rows without a DB migration.
+            const LEGACY_MAP = [
+                { m: /^leave_office_notice(\.php)?\b/,               to: 'api/reports/leave-notice.php' },
+                { m: /^leave_application_details(\.php)?\b/,         to: 'views/leave/application-details.php' },
+                { m: /^leave_joining_application_details(\.php)?\b/, to: 'views/leave/approve-joining-application.php' },
+                { m: /^approve_increment_data_changes(\.php)?\b/,    to: 'views/salary-increment/approve-changes.php' },
+            ];
             function resolveLink(link) {
                 if (!link || link === 'javascript:void(0);') return 'javascript:void(0);';
                 if (/^(https?:)?\/\//i.test(link) || link.startsWith('javascript:')) return link;
+                let normalized = link.replace(/^\/+/, '');
+                for (const rule of LEGACY_MAP) {
+                    if (rule.m.test(normalized)) { normalized = normalized.replace(rule.m, rule.to); break; }
+                }
                 const base = '<?php echo rtrim($baseURL, "/"); ?>';
-                return base + '/' + link.replace(/^\/+/, '');
+                return base + '/' + normalized;
             }
 
             items.forEach((notif, idx) => {

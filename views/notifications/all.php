@@ -176,11 +176,23 @@ $menuslug = htmlspecialchars($_GET['menuslug'] ?? 'notifications-all');
     // Normalize a stored notification link (usually a project-relative path
     // like "views/leave/…") into an absolute URL under BASE_URL, so links
     // work no matter where the notifications page itself lives.
+    // Also rewrites legacy root-level snake_case paths to their modern
+    // equivalents (~28k historical rows, no DB migration needed).
+    const LEGACY_MAP = [
+        { m: /^leave_office_notice(\.php)?\b/,               to: 'api/reports/leave-notice.php' },
+        { m: /^leave_application_details(\.php)?\b/,         to: 'views/leave/application-details.php' },
+        { m: /^leave_joining_application_details(\.php)?\b/, to: 'views/leave/approve-joining-application.php' },
+        { m: /^approve_increment_data_changes(\.php)?\b/,    to: 'views/salary-increment/approve-changes.php' },
+    ];
     function resolveLink(link) {
         if (!link || link === 'javascript:void(0);') return 'javascript:void(0);';
         if (/^(https?:)?\/\//i.test(link) || link.startsWith('javascript:')) return link;
+        let normalized = link.replace(/^\/+/, '');
+        for (const rule of LEGACY_MAP) {
+            if (rule.m.test(normalized)) { normalized = normalized.replace(rule.m, rule.to); break; }
+        }
         const base = '<?php echo rtrim($baseURL, "/"); ?>';
-        return base + '/' + link.replace(/^\/+/, '');
+        return base + '/' + normalized;
     }
 
     function iconFor(item) {
