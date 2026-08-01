@@ -112,6 +112,21 @@ if (!empty($search)) {
 // Pull live values from employee_list (employee_name, email, mobileNo) +
 // job_title_name. The cells below prefer these over the user_list copies so
 // that updates in employee_list flow through to display without re-saving.
+// Auto-migrate lockout columns on user_list so the query below never explodes
+// on databases that predate the lockout feature. Idempotent, one-time per req.
+if (!defined('USERS_FETCH_LOCK_MIG')) {
+    define('USERS_FETCH_LOCK_MIG', true);
+    $_cols = [];
+    $_r = @mysqli_query($con, "SHOW COLUMNS FROM user_list");
+    while ($_r && ($_row = mysqli_fetch_assoc($_r))) $_cols[] = $_row['Field'];
+    $_add = [];
+    if (!in_array('failed_login_attempts', $_cols, true)) $_add[] = "ADD COLUMN `failed_login_attempts` INT NOT NULL DEFAULT 0";
+    if (!in_array('is_locked',             $_cols, true)) $_add[] = "ADD COLUMN `is_locked` TINYINT(1) NOT NULL DEFAULT 0";
+    if (!in_array('locked_at',             $_cols, true)) $_add[] = "ADD COLUMN `locked_at` DATETIME NULL";
+    if (!in_array('last_failed_login',     $_cols, true)) $_add[] = "ADD COLUMN `last_failed_login` DATETIME NULL";
+    if (!empty($_add)) @mysqli_query($con, "ALTER TABLE user_list " . implode(', ', $_add));
+}
+
 $sql = "SELECT ul.*,
                el.photo         AS employee_photo,
                el.employee_id   AS emp_code,
@@ -170,8 +185,12 @@ while ($row = mysqli_fetch_assoc($result)) {
     } else {
         $avatarHtml = '<div class="emp-avatar"><span class="emp-avatar-fallback">' . htmlspecialchars($initials) . '</span></div>';
     }
+    $isLocked = (int)($row['is_locked'] ?? 0) === 1;
+    $lockBadge = $isLocked
+        ? ' <span class="user-lock-badge" title="অ্যাকাউন্ট লক করা"><i class="ti tabler-lock"></i> লক করা</span>'
+        : '';
     $nameCell = '<div class="emp-cell">' . $avatarHtml
-              . '<div class="emp-meta"><div class="emp-name">' . htmlspecialchars($fullName) . '</div>'
+              . '<div class="emp-meta"><div class="emp-name">' . htmlspecialchars($fullName) . $lockBadge . '</div>'
               . ($empCode ? '<div class="emp-sub-light"><i class="ti tabler-id me-1"></i>' . htmlspecialchars($empCode) . '</div>' : '')
               . '</div></div>';
 
@@ -191,8 +210,12 @@ while ($row = mysqli_fetch_assoc($result)) {
         ? '<span class="user-code"><i class="ti tabler-at me-1"></i>' . htmlspecialchars($row['user_id']) . '</span>'
         : '<span class="text-muted small">—</span>';
 
-    $action = '<div class="action-group">'
-            . '<a class="action-icon icon-view" data-turbo="true" data-bs-toggle="tooltip" data-bs-placement="top" title="সম্পাদনা" href="../../views/users/edit.php?dataID=' . $dataID . '&menuslug=' . $menuslug . '"><i class="ti tabler-edit"></i></a>'
+    $action = '<div class="action-group">';
+    // Super admin sees an "Unlock" quick-action on locked rows
+    if ($isSuperAdminViewer && $isLocked) {
+        $action .= '<button type="button" class="action-icon icon-unlock" data-bs-toggle="tooltip" data-bs-placement="top" title="আনলক করুন" onclick="unlockUser(' . $dataID . ')"><i class="ti tabler-lock-open"></i></button>';
+    }
+    $action .= '<a class="action-icon icon-view" data-turbo="true" data-bs-toggle="tooltip" data-bs-placement="top" title="সম্পাদনা" href="../../views/users/edit.php?dataID=' . $dataID . '&menuslug=' . $menuslug . '"><i class="ti tabler-edit"></i></a>'
             . '<button type="button" class="action-icon icon-reject" data-bs-toggle="tooltip" data-bs-placement="top" title="মুছে ফেলুন" onclick="removeData(' . $sl . ',' . $dataID . ')"><i class="ti tabler-trash"></i></button>'
             . '</div>';
 

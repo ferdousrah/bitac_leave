@@ -737,14 +737,21 @@ $(function() {
             dataType: 'html',
             data: $form.serialize(),
             success: function(data) {
-                if (data == 0) {
-                    swalError('ভুল ইউজারনেম বা পাসওয়ার্ড');
-                    $submit.prop('disabled', false);
-                    $label.text('প্রবেশ করুন');
-                } else {
+                var trimmed = String(data).trim();
+                if (trimmed === '1') {
                     $label.text('সফল · রিডাইরেক্ট হচ্ছে...');
                     window.location = 'dashboard?menuslug=dashboard';
+                    return;
                 }
+                // Structured lockout / attempt-remaining message from login_action.php
+                // Format: LOCKED:<bangla message>
+                if (trimmed.indexOf('LOCKED:') === 0) {
+                    swalError(trimmed.substring('LOCKED:'.length));
+                } else {
+                    swalError('ভুল ইউজারনেম বা পাসওয়ার্ড');
+                }
+                $submit.prop('disabled', false);
+                $label.text('প্রবেশ করুন');
             },
             error: function() {
                 swalError('সার্ভার ত্রুটি — কিছুক্ষণ পর পুনরায় চেষ্টা করুন');

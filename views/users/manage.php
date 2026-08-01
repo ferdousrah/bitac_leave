@@ -382,4 +382,77 @@ function removeData(sl, dataID) {
         });
     });
 }
+
+// Unlock a locked account (super admin only; the button is only rendered for them)
+function unlockUser(dataID) {
+    Swal.fire({
+        title: 'অ্যাকাউন্ট আনলক?',
+        text: "ব্যবহারকারী আবার লগইন করতে পারবেন। ভুল চেষ্টার কাউন্টার শূন্য করা হবে।",
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#4338ca',
+        cancelButtonColor: '#8592a3',
+        confirmButtonText: 'হ্যাঁ, আনলক করুন',
+        cancelButtonText: 'বাতিল',
+        customClass: { confirmButton: 'btn btn-primary me-3', cancelButton: 'btn btn-label-secondary' },
+        buttonsStyling: false
+    }).then(function(result) {
+        if (!result.isConfirmed) return;
+        $.ajax({
+            type: 'post',
+            url: '../../api/users/unlock.php',
+            data: { dataID: dataID },
+            dataType: 'json',
+            success: function(resp) {
+                if (resp && resp.status === 1) {
+                    $('#userListTable').DataTable().ajax.reload(null, false);
+                    Swal.fire({
+                        title: 'সফল', text: resp.message, icon: 'success',
+                        confirmButtonColor: '#4338ca',
+                        customClass: { confirmButton: 'btn btn-primary' }, buttonsStyling: false
+                    });
+                } else {
+                    Swal.fire({
+                        title: 'ত্রুটি', text: (resp && resp.message) || 'আনলক ব্যর্থ',
+                        icon: 'error', confirmButtonColor: '#dc3545',
+                        customClass: { confirmButton: 'btn btn-danger' }, buttonsStyling: false
+                    });
+                }
+            },
+            error: function() {
+                Swal.fire({
+                    title: 'ত্রুটি', text: 'সার্ভার সংযোগ ব্যর্থ',
+                    icon: 'error', confirmButtonColor: '#dc3545',
+                    customClass: { confirmButton: 'btn btn-danger' }, buttonsStyling: false
+                });
+            }
+        });
+    });
+}
 </script>
+
+<style>
+/* Lock badge on user list */
+.user-lock-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+.user-lock-badge i { font-size: 0.85rem; }
+
+/* Unlock action button */
+.action-icon.icon-unlock {
+    background: #eef2ff;
+    color: #4338ca;
+}
+.action-icon.icon-unlock:hover { background: #4338ca; color: #fff; }
+</style>
