@@ -1415,7 +1415,7 @@ $assetURL = BASE_URL . '/vuexy-assets';
 
                                     <!-- Footer -->
                                     <li style="background:#f8f9fb; border-top:1px solid #f0f2f5; padding:12px 16px;">
-                                        <a href="javascript:void(0);" class="btn btn-sm w-100 fw-semibold" style="background:linear-gradient(135deg,#3A3D53,#5a5f78); color:#fff; border:none; border-radius:10px; font-size:0.82rem; padding:9px;">
+                                        <a href="<?= BASE_URL ?>/views/notifications/all.php" class="btn btn-sm w-100 fw-semibold" style="background:linear-gradient(135deg,#3A3D53,#5a5f78); color:#fff; border:none; border-radius:10px; font-size:0.82rem; padding:9px;">
                                             <i class="ti tabler-list me-1"></i> সব নোটিফিকেশন দেখুন
                                         </a>
                                     </li>
