@@ -592,4 +592,116 @@ if (!function_exists('audit_log')) {
     }
 }
 
+/**
+ * Fan out an in-app notification to one or more users.
+ *
+ * All approval endpoints call this — never write to `notification` directly.
+ * Silent-on-failure so a notification insert never breaks the underlying
+ * business operation (approve/reject succeeds even if inbox write fails).
+ *
+ * Usage:
+ *   send_notification([$applicantUserID], 'আপনার ছুটি অনুমোদিত হয়েছে', [
+ *       'type'        => 'leave_approved',
+ *       'link'        => '/views/leave/all-applications.php',
+ *       'isImportant' => 1,
+ *   ]);
+ *
+ * @param int|int[] $userIDs      Target user_list.dataID (or array of them)
+ * @param string    $message      Bangla / plain-text message (< 400 chars ideal)
+ * @param array     $opts         Optional: type (short slug), link (relative URL),
+ *                                isImportant (0|1), typeBadge (raw HTML badge —
+ *                                legacy `notificationType` blob for backward compat)
+ * @return int  count of rows inserted
+ */
+if (!function_exists('send_notification')) {
+    function send_notification($userIDs, $message, array $opts = []) {
+        if (!isset($GLOBALS['con']) || !$GLOBALS['con']) return 0;
+        $con = $GLOBALS['con'];
+
+        // Normalize + dedupe recipients
+        if (!is_array($userIDs)) $userIDs = [$userIDs];
+        $userIDs = array_values(array_unique(array_filter(array_map('intval', $userIDs), function($v){ return $v > 0; })));
+        if (empty($userIDs) || trim($message) === '') return 0;
+
+        $type        = isset($opts['type'])        ? (string)$opts['type']        : '';
+        $link        = isset($opts['link'])        ? (string)$opts['link']        : '';
+        $isImportant = isset($opts['isImportant']) ? (int)(bool)$opts['isImportant'] : 0;
+        // Legacy DB uses `notificationType` as an HTML badge blob; if caller
+        // supplies a plain slug via `type`, keep it as-is. UI keyword-matches on it.
+        $notifType   = isset($opts['typeBadge'])   ? (string)$opts['typeBadge']   : $type;
+
+        $now = date('Y-m-d H:i:s');
+        $count = 0;
+        try {
+            $stmt = mysqli_prepare($con,
+                "INSERT INTO notification (userID, message, notificationType, link, dateTime, isRead, isImportant)
+                 VALUES (?, ?, ?, ?, ?, 0, ?)");
+            if (!$stmt) return 0;
+            foreach ($userIDs as $uid) {
+                mysqli_stmt_bind_param($stmt, 'issssi', $uid, $message, $notifType, $link, $now, $isImportant);
+                if (mysqli_stmt_execute($stmt)) $count++;
+            }
+            mysqli_stmt_close($stmt);
+        } catch (Throwable $e) {
+            // Silent — inbox write must never break the caller's business op
+        }
+        return $count;
+    }
+}
+
+/**
+ * Resolve user_list.dataID from an employee_list.id.
+ *
+ * Multiple approval flows only know the employee_id but need to notify the
+ * user (notification.userID = user_list.dataID). Returns 0 if the employee
+ * has no user account.
+ */
+if (!function_exists('user_id_for_employee')) {
+    function user_id_for_employee($employeeID) {
+        if (!isset($GLOBALS['con']) || !$GLOBALS['con']) return 0;
+        $employeeID = (int)$employeeID;
+        if ($employeeID <= 0) return 0;
+        try {
+            $stmt = mysqli_prepare($GLOBALS['con'],
+                "SELECT dataID FROM user_list WHERE employee_id = ? LIMIT 1");
+            if (!$stmt) return 0;
+            mysqli_stmt_bind_param($stmt, 'i', $employeeID);
+            mysqli_stmt_execute($stmt);
+            $row = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt)) ?: [];
+            mysqli_stmt_close($stmt);
+            return (int)($row['dataID'] ?? 0);
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+}
+
+/**
+ * Resolve user_list.dataID[] for a list of employee_list.id values (batch).
+ * Skips employees without a user account.
+ */
+if (!function_exists('user_ids_for_employees')) {
+    function user_ids_for_employees(array $employeeIDs) {
+        if (!isset($GLOBALS['con']) || !$GLOBALS['con']) return [];
+        $ids = array_values(array_unique(array_filter(array_map('intval', $employeeIDs), function($v){ return $v > 0; })));
+        if (empty($ids)) return [];
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $types = str_repeat('i', count($ids));
+        try {
+            $stmt = mysqli_prepare($GLOBALS['con'],
+                "SELECT dataID FROM user_list WHERE employee_id IN ($placeholders)");
+            if (!$stmt) return [];
+            mysqli_stmt_bind_param($stmt, $types, ...$ids);
+            mysqli_stmt_execute($stmt);
+            $res = mysqli_stmt_get_result($stmt);
+            $out = [];
+            while ($r = mysqli_fetch_assoc($res)) $out[] = (int)$r['dataID'];
+            mysqli_stmt_close($stmt);
+            return $out;
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+}
+
 ?>

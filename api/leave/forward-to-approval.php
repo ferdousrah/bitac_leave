@@ -137,4 +137,34 @@ if (function_exists('audit_log')) {
     ]);
 }
 
+// Notify first non-supervisor signatory that their queue has a new item
+try {
+    $nextQ = mysqli_prepare($con,
+        "SELECT signatory FROM leave_data_for_approval
+         WHERE leaveApplicationID = ? AND isSupervisor = 0 AND isApproved = 0
+         ORDER BY serial ASC LIMIT 1");
+    mysqli_stmt_bind_param($nextQ, 'i', $leaveApplicationID);
+    mysqli_stmt_execute($nextQ);
+    $nextRow = mysqli_fetch_assoc(mysqli_stmt_get_result($nextQ)) ?: [];
+    mysqli_stmt_close($nextQ);
+    $nextEmpID = (int)($nextRow['signatory'] ?? 0);
+
+    if ($nextEmpID > 0) {
+        $applName = '';
+        $anq = mysqli_prepare($con,
+            "SELECT el.employee_name FROM leave_applications la
+             INNER JOIN employee_list el ON la.applicantID = el.id
+             WHERE la.dataID = ? LIMIT 1");
+        mysqli_stmt_bind_param($anq, 'i', $leaveApplicationID);
+        mysqli_stmt_execute($anq);
+        $applName = mysqli_fetch_assoc(mysqli_stmt_get_result($anq))['employee_name'] ?? 'কর্মচারী';
+        mysqli_stmt_close($anq);
+
+        send_notification([user_id_for_employee($nextEmpID)],
+            "$applName-এর ছুটির আবেদন আপনার অনুমোদনের অপেক্ষায়",
+            ['type' => 'leave_pending',
+             'link' => 'views/leave/approval.php?menuslug=leave-approval']);
+    }
+} catch (\Throwable $e) { /* silent */ }
+
 echo json_encode(['status' => 1, 'message' => 'আবেদনটি অনুমোদনের জন্য পাঠানো হয়েছে।']);

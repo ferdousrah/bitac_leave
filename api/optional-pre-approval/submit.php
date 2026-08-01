@@ -169,6 +169,22 @@ try {
         ]);
     }
 
+    // Notify supervisor — new pre-approval waiting for their recommendation
+    try {
+        $applName = '';
+        $nQ = mysqli_prepare($con, "SELECT employee_name FROM employee_list WHERE id = ? LIMIT 1");
+        mysqli_stmt_bind_param($nQ, 'i', $employeeID);
+        mysqli_stmt_execute($nQ);
+        $applName = mysqli_fetch_assoc(mysqli_stmt_get_result($nQ))['employee_name'] ?? 'কর্মচারী';
+        mysqli_stmt_close($nQ);
+
+        $yearBn = strtr((string)$year, ['0'=>'০','1'=>'১','2'=>'২','3'=>'৩','4'=>'৪','5'=>'৫','6'=>'৬','7'=>'৭','8'=>'৮','9'=>'৯']);
+        send_notification([user_id_for_employee($supervisorID)],
+            "$applName-এর $yearBn সালের ঐচ্ছিক ছুটির পূর্বানুমোদন আপনার সুপারিশের অপেক্ষায়",
+            ['type' => 'opa_supervise_pending',
+             'link' => 'views/optional-pre-approval/supervisor-queue.php?menuslug=optional-pre-approval-supervisor-queue']);
+    } catch (\Throwable $e) { /* silent */ }
+
     echo json_encode(['status'=>1, 'message'=>'পূর্বানুমোদন আবেদন সফলভাবে জমা হয়েছে', 'id'=>(int)$preApprovalID]);
 } catch (Exception $e) {
     mysqli_rollback($con);

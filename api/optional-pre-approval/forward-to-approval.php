@@ -150,6 +150,36 @@ try {
         ]);
     }
 
+    // Notify the first non-supervisor chain signatory (their queue just unlocked)
+    try {
+        $firstQ = mysqli_prepare($con,
+            "SELECT signatory FROM optional_leave_pre_approval_signatory
+             WHERE preApprovalID = ? AND isSupervisor = 0 AND isApproved = 0
+             ORDER BY serial ASC LIMIT 1");
+        mysqli_stmt_bind_param($firstQ, 'i', $pid);
+        mysqli_stmt_execute($firstQ);
+        $firstRow = mysqli_fetch_assoc(mysqli_stmt_get_result($firstQ)) ?: [];
+        mysqli_stmt_close($firstQ);
+        $firstEmpID = (int)($firstRow['signatory'] ?? 0);
+        if ($firstEmpID > 0) {
+            $applName = '';
+            $nQ = mysqli_prepare($con,
+                "SELECT el.employee_name FROM optional_leave_pre_approval opa
+                 INNER JOIN employee_list el ON opa.employee_id = el.id
+                 WHERE opa.id = ? LIMIT 1");
+            mysqli_stmt_bind_param($nQ, 'i', $pid);
+            mysqli_stmt_execute($nQ);
+            $nr = mysqli_fetch_assoc(mysqli_stmt_get_result($nQ)) ?: [];
+            mysqli_stmt_close($nQ);
+            $applName = $nr['employee_name'] ?? 'কর্মচারী';
+
+            send_notification([user_id_for_employee($firstEmpID)],
+                "$applName-এর ঐচ্ছিক ছুটির পূর্বানুমোদন আপনার অনুমোদনের অপেক্ষায়",
+                ['type' => 'opa_pending',
+                 'link' => 'views/optional-pre-approval/queue.php?menuslug=optional-pre-approval-queue']);
+        }
+    } catch (\Throwable $e) { /* silent */ }
+
     echo json_encode(['status'=>1, 'message'=>'আবেদনটি অনুমোদনের জন্য পাঠানো হয়েছে']);
 } catch (Exception $e) {
     mysqli_rollback($con);

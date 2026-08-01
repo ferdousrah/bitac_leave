@@ -161,6 +161,40 @@ if ($result) {
                                . ($isApproved == 2 ? 'reason=' . mb_substr($reason, 0, 200) : ''),
         ]);
     }
+
+    // Notify affected employee(s) — a batch may touch multiple employees;
+    // dedupe user IDs so each person gets one notification per action.
+    try {
+        $affectedEmpIDs = [];
+        if ($targetBatchId !== '') {
+            $eQ = mysqli_prepare($con,
+                "SELECT DISTINCT employeeID FROM leave_addition_history WHERE batch_id = ?");
+            mysqli_stmt_bind_param($eQ, 's', $targetBatchId);
+            mysqli_stmt_execute($eQ);
+            $er = mysqli_stmt_get_result($eQ);
+            while ($r = mysqli_fetch_assoc($er)) $affectedEmpIDs[] = (int)$r['employeeID'];
+            mysqli_stmt_close($eQ);
+        } elseif ($dataID > 0) {
+            $eQ = mysqli_prepare($con,
+                "SELECT employeeID FROM leave_addition_history WHERE dataID = ? LIMIT 1");
+            mysqli_stmt_bind_param($eQ, 'i', $dataID);
+            mysqli_stmt_execute($eQ);
+            $r = mysqli_fetch_assoc(mysqli_stmt_get_result($eQ));
+            if ($r) $affectedEmpIDs[] = (int)$r['employeeID'];
+            mysqli_stmt_close($eQ);
+        }
+        $userIDs = user_ids_for_employees($affectedEmpIDs);
+
+        $msg = $isApproved == 1
+            ? 'আপনার ছুটির সংযোজনের অফিস আদেশ অনুমোদিত হয়েছে'
+            : 'আপনার ছুটির সংযোজনের অফিস আদেশ প্রত্যাখ্যাত হয়েছে। কারণ: ' . mb_substr($reason, 0, 120);
+        send_notification($userIDs, $msg, [
+            'type' => $isApproved == 1 ? 'leave_addition_approved' : 'leave_addition_rejected',
+            'link' => 'views/leave/all-applications.php?menuslug=all-leave-application',
+            'isImportant' => $isApproved == 2 ? 1 : 0,
+        ]);
+    } catch (\Throwable $e) { /* silent */ }
+
     $countPart = ($targetBatchId !== '' && $affected > 1) ? " ($affected টি এন্ট্রি)" : '';
     $message = ($isApproved == 1 ? 'সফলভাবে অনুমোদন করা হয়েছে' : 'সফলভাবে প্রত্যাখ্যান করা হয়েছে') . $countPart;
     echo json_encode(['status' => 'success', 'message' => $message]);

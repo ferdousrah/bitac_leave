@@ -1215,11 +1215,18 @@ $assetURL = BASE_URL . '/vuexy-assets';
         .notif-item {
             display: flex; align-items: flex-start; gap: 12px;
             padding: 13px 18px; border-bottom: 1px solid #f3f4f8;
-            text-decoration: none; color: inherit;
+            text-decoration: none; color: inherit; position: relative;
             transition: background 0.15s ease; cursor: pointer;
         }
         .notif-item:hover { background: #f5f7ff; text-decoration: none; color: inherit; }
         .notif-item:last-child { border-bottom: none; }
+        .notif-item-unread { background: #fafbff; }
+        .notif-item-unread .notif-item-title { color: #1e293b; }
+        .notif-unread-dot {
+            position: absolute; top: 18px; right: 14px;
+            width: 8px; height: 8px; border-radius: 50%; background: #4338ca;
+            box-shadow: 0 0 0 2px #fff;
+        }
         .notif-icon-wrap {
             flex-shrink: 0; width: 38px; height: 38px;
             border-radius: 11px; display: flex;

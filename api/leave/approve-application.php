@@ -70,6 +70,27 @@ if ($action === 'decline') {
     mysqli_stmt_bind_param($appUpdStmt, 'ssiis', $note, $today, $currentEmployeeID, $noticeNumber, $leaveApplicationID);
     mysqli_stmt_execute($appUpdStmt);
 
+    // Notify applicant of the rejection
+    try {
+        $aQ = mysqli_prepare($con,
+            "SELECT el.employee_name, ul.dataID
+             FROM leave_applications la
+             INNER JOIN employee_list el ON la.applicantID = el.id
+             LEFT JOIN user_list ul ON ul.employee_id = el.id
+             WHERE la.dataID = ? LIMIT 1");
+        mysqli_stmt_bind_param($aQ, 'i', $leaveApplicationID);
+        mysqli_stmt_execute($aQ);
+        $aRow = mysqli_fetch_assoc(mysqli_stmt_get_result($aQ)) ?: [];
+        mysqli_stmt_close($aQ);
+        $applicantUserID = (int)($aRow['dataID'] ?? 0);
+        $noteShort = mb_substr((string)$note, 0, 120);
+        send_notification([$applicantUserID],
+            "আপনার ছুটির আবেদন না মঞ্জুর করা হয়েছে। কারণ: $noteShort",
+            ['type' => 'leave_rejected',
+             'link' => 'views/leave/all-applications.php?menuslug=all-leave-application',
+             'isImportant' => 1]);
+    } catch (\Throwable $e) { /* silent */ }
+
     echo json_encode(['status' => 1, 'message' => 'আবেদনটি না মঞ্জুর করা হয়েছে।']);
     exit;
 }

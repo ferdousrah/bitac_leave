@@ -105,6 +105,19 @@ if (function_exists('audit_log')) {
     ]);
 }
 
+// Notify affected employee
+try {
+    $affectedUserID = user_id_for_employee((int)$row['employeeID']);
+    $msg = $isApproved === 1
+        ? 'আপনার পূর্ববর্তী ছুটির তথ্য অনুমোদিত হয়েছে'
+        : 'আপনার পূর্ববর্তী ছুটির তথ্য প্রত্যাখ্যাত হয়েছে। কারণ: ' . mb_substr($reason, 0, 120);
+    send_notification([$affectedUserID], $msg, [
+        'type' => $isApproved === 1 ? 'previous_leave_approved' : 'previous_leave_rejected',
+        'link' => 'views/leave/all-applications.php?menuslug=all-leave-application',
+        'isImportant' => $isApproved === 2 ? 1 : 0,
+    ]);
+} catch (\Throwable $e) { /* silent */ }
+
 echo json_encode([
     'status'  => 'success',
     'message' => $isApproved === 1 ? 'সফলভাবে অনুমোদন করা হয়েছে' : 'সফলভাবে প্রত্যাখ্যান করা হয়েছে',

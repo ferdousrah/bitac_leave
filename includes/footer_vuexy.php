@@ -175,18 +175,18 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 
 function fetchNotifications() {
-    fetch('<?php echo $baseURL; ?>old/fetch_notifications.php')
+    fetch('<?php echo $baseURL; ?>api/notifications/fetch.php?scope=unread&limit=15', { credentials: 'same-origin' })
         .then(response => response.json())
-        .then(data => {
-            if (data.error) return;
-
-            const count = data.length;
+        .then(resp => {
+            if (!resp || resp.status !== 1) return;
+            const items = Array.isArray(resp.items) ? resp.items : [];
+            const unread = parseInt(resp.unreadCount || 0, 10);
 
             // ── Badge on bell icon ──
             const badge = document.querySelector('.notif-badge-count');
             if (badge) {
-                if (count > 0) {
-                    badge.textContent = count > 9 ? '৯+' : toBn(count);
+                if (unread > 0) {
+                    badge.textContent = unread > 9 ? '৯+' : toBn(unread);
                     badge.style.display = 'block';
                 } else {
                     badge.style.display = 'none';
@@ -196,8 +196,8 @@ function fetchNotifications() {
             // ── Header count pill ──
             const headerCount = document.querySelector('.notif-header-count');
             if (headerCount) {
-                headerCount.textContent = toBn(count) + ' নতুন';
-                headerCount.style.background = count > 0
+                headerCount.textContent = toBn(unread) + ' নতুন';
+                headerCount.style.background = unread > 0
                     ? 'linear-gradient(135deg,#f5576c,#c0392b)'
                     : 'rgba(255,255,255,0.2)';
             }
@@ -207,30 +207,39 @@ function fetchNotifications() {
             if (!notificationList) return;
             notificationList.innerHTML = '';
 
-            if (count === 0) {
+            if (items.length === 0) {
                 notificationList.innerHTML = `
                     <div class="notif-empty">
                         <i class="ti tabler-bell-off"></i>
                         <p>কোনো নতুন নোটিফিকেশন নেই</p>
                     </div>`;
+                ensureMarkAllReadBtn(0);
                 return;
             }
 
-            data.forEach((notif, idx) => {
+            items.forEach((notif, idx) => {
                 const el = document.createElement('a');
                 el.href = notif.link || 'javascript:void(0);';
-                el.className = 'notif-item';
+                el.className = 'notif-item' + (notif.isRead ? '' : ' notif-item-unread');
+                el.dataset.notifId = notif.id;
                 el.style.animationDelay = (idx * 0.04) + 's';
 
-                // pick icon & colour by message keyword
+                // pick icon & colour by type slug OR message keyword
                 let iconClass = 'tabler-bell', iconBg = '#eef0ff', iconColor = '#667eea';
+                const typeSlug = String(notif.type || '').toLowerCase();
                 const msg = (notif.message || '').toLowerCase();
-                if (msg.includes('ছুটি') || msg.includes('leave')) {
-                    iconClass = 'tabler-calendar-event'; iconBg = '#e8f5e9'; iconColor = '#28a745';
-                } else if (msg.includes('অফিস') || msg.includes('office')) {
-                    iconClass = 'tabler-building'; iconBg = '#fff3cd'; iconColor = '#f59e0b';
-                } else if (msg.includes('যোগদান') || msg.includes('join')) {
+                if (typeSlug.includes('reject') || msg.includes('প্রত্যাখ্যাত')) {
+                    iconClass = 'tabler-x'; iconBg = '#fee2e2'; iconColor = '#dc2626';
+                } else if (typeSlug.includes('office') || msg.includes('অফিস আদেশ')) {
+                    iconClass = 'tabler-file-certificate'; iconBg = '#fff3cd'; iconColor = '#f59e0b';
+                } else if (typeSlug.includes('join') || msg.includes('যোগদান')) {
                     iconClass = 'tabler-user-check'; iconBg = '#e0f2fe'; iconColor = '#0ea5e9';
+                } else if (typeSlug.includes('opa') || typeSlug.includes('optional') || msg.includes('ঐচ্ছিক')) {
+                    iconClass = 'tabler-calendar-star'; iconBg = '#f3e8ff'; iconColor = '#9333ea';
+                } else if (typeSlug.includes('leave') || msg.includes('ছুটি')) {
+                    iconClass = 'tabler-calendar-event'; iconBg = '#e8f5e9'; iconColor = '#28a745';
+                } else if (typeSlug.includes('addition') || typeSlug.includes('deduction') || msg.includes('সংযোজন') || msg.includes('কর্তন')) {
+                    iconClass = 'tabler-adjustments-alt'; iconBg = '#eef2ff'; iconColor = '#4338ca';
                 }
 
                 el.innerHTML = `
@@ -241,14 +250,71 @@ function fetchNotifications() {
                         <div class="notif-item-title">${notif.message || ''}</div>
                         <div class="notif-item-time">
                             <i class="ti tabler-clock" style="font-size:0.7rem;"></i>
-                            ${notif.dateTime || ''}
+                            ${notif.dateHuman || notif.dateTime || ''}
                         </div>
                     </div>
+                    ${notif.isRead ? '' : '<span class="notif-unread-dot" aria-label="unread"></span>'}
                 `;
+
+                // Click → mark read then follow link (async, don't block navigation)
+                el.addEventListener('click', function(ev){
+                    if (notif.id && !notif.isRead) {
+                        try {
+                            navigator.sendBeacon
+                                ? navigator.sendBeacon('<?php echo $baseURL; ?>api/notifications/mark-read.php',
+                                    new URLSearchParams({ id: notif.id }))
+                                : fetch('<?php echo $baseURL; ?>api/notifications/mark-read.php', {
+                                    method: 'POST',
+                                    credentials: 'same-origin',
+                                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                    body: 'id=' + encodeURIComponent(notif.id),
+                                    keepalive: true
+                                });
+                        } catch (e) {}
+                    }
+                    // If link is a placeholder (javascript:void(0)), prevent nav
+                    if (!notif.link || notif.link === 'javascript:void(0);') {
+                        ev.preventDefault();
+                    }
+                });
+
                 notificationList.appendChild(el);
             });
+
+            ensureMarkAllReadBtn(unread);
         })
         .catch(error => console.error('Error fetching notifications:', error));
+}
+
+// Ensure a "সব পড়া হয়েছে" action exists in the dropdown footer.
+// Idempotent — replaces existing on each fetch so the count refreshes.
+function ensureMarkAllReadBtn(unread) {
+    const menu = document.querySelector('.notif-dropdown-menu');
+    if (!menu) return;
+    let footer = menu.querySelector('.notif-dd-footer');
+    if (!footer) {
+        footer = document.createElement('div');
+        footer.className = 'notif-dd-footer';
+        footer.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-top:1px solid #eef0f5;background:#fafbfd;border-radius:0 0 12px 12px;';
+        menu.appendChild(footer);
+    }
+    footer.innerHTML = `
+        <button type="button" class="notif-mark-all-btn" ${unread === 0 ? 'disabled' : ''}
+            style="background:transparent;border:none;color:${unread === 0 ? '#9ca3af' : '#4338ca'};font-size:0.78rem;font-weight:500;cursor:${unread === 0 ? 'default' : 'pointer'};padding:4px 6px;">
+            <i class="ti tabler-checks me-1"></i>সব পড়া হয়েছে
+        </button>
+    `;
+    const btn = footer.querySelector('.notif-mark-all-btn');
+    if (btn && unread > 0) {
+        btn.addEventListener('click', function(e){
+            e.preventDefault();
+            fetch('<?php echo $baseURL; ?>api/notifications/mark-all-read.php', {
+                method: 'POST', credentials: 'same-origin'
+            }).then(r => r.json()).then(res => {
+                if (res && res.status === 1) fetchNotifications();
+            });
+        });
+    }
 }
 
 function toBn(n) {
