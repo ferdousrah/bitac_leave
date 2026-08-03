@@ -95,9 +95,16 @@ if ($_editIDRaw !== '') {
             mysqli_stmt_close($cStmt);
             if ($cnt === 0) {
                 $editMode = true;
-                // Load segments
+                // Load segments — only the 'proposed' rows (the mutable current
+                // state). Every submit inserts BOTH a 'requested' (frozen
+                // original) and a 'proposed' copy for each segment, so loading
+                // all kinds duplicated every segment in the form and triggered
+                // spurious overlap warnings on edit.
                 $sStmt = mysqli_prepare($con,
-                    "SELECT * FROM leave_application_segments WHERE applicationID = ? ORDER BY serial ASC, dataID ASC");
+                    "SELECT * FROM leave_application_segments
+                     WHERE applicationID = ?
+                       AND (kind = 'proposed' OR kind IS NULL)
+                     ORDER BY serial ASC, dataID ASC");
                 mysqli_stmt_bind_param($sStmt, 'i', $maybe);
                 mysqli_stmt_execute($sStmt);
                 $sRes = mysqli_stmt_get_result($sStmt);
