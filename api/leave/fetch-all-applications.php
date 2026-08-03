@@ -48,9 +48,18 @@ if ($statusFilter === 'pending') {
     $statusClause   = ' AND la.status = ?';
     $statusTypes    = 'i';
     $statusParams[] = 2;
+} else if ($statusFilter === 'returned') {
+    $statusClause   = ' AND la.status = ?';
+    $statusTypes    = 'i';
+    $statusParams[] = 3;
 }
 
 // Base FROM/WHERE used by both counts and main query
+// NOTE: an earlier version filtered out la.status = 3 (ফেরত পাঠানো
+// applications). That hid every returned application from the
+// applicant's history page even though the row rendering already
+// handles status = 3 ("ফেরত — সম্পাদনা করুন" badge). Removed the
+// exclusion so returned applications remain visible to the applicant.
 $baseFrom = "
 FROM leave_applications la
 INNER JOIN employee_list el  ON la.applicantID = el.id
@@ -59,8 +68,7 @@ LEFT  JOIN sections      s   ON el.section_id  = s.id
 LEFT  JOIN leave_types   lt  ON la.leaveType   = lt.leaveID
 LEFT  JOIN leave_types   alt ON la.approvedLeaveType = alt.leaveID
 LEFT  JOIN leave_joining_application lja ON lja.leaveApplicationID = la.dataID
-WHERE la.status != 3
-  AND (la.applicantID = ? OR la.submitBy = ?)
+WHERE (la.applicantID = ? OR la.submitBy = ?)
   $statusClause";
 
 $baseTypes  = 'ss' . $statusTypes;
@@ -356,7 +364,7 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
     } else if ($row['status'] == 2 && !$hasJoining) {
         $status = '<span class="status-pill status-rejected"><i class="ti tabler-x me-1"></i>অনুমোদিত হয়নি</span>';
     } else if ($row['status'] == 3) {
-        $status = '<span class="status-pill" style="background:#fff3e1;color:#b8651a;"><i class="ti tabler-corner-up-left me-1"></i>ফেরত — সম্পাদনা করুন</span>';
+        $status = '<span class="status-pill" style="background:#fff3e1;color:#b8651a;"><i class="ti tabler-corner-up-left me-1"></i>পুনঃ যাচাই — সম্পাদনা করুন</span>';
     } else if ($row['status'] == 0) {
         $status = '<span class="status-pill status-pending"><i class="ti tabler-hourglass me-1"></i>অপেক্ষমান</span>';
     }
@@ -441,6 +449,13 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
             </a></li>
             <li><a class="dropdown-item" href="javascript:void(0);" onClick="cancelApplication(' . $row['dataID'] . ', \'' . $row['dataID'] . '\')">
                 <i class="ti tabler-trash me-2"></i>ডিলিট
+            </a></li>';
+    }
+
+    // Returned by a signatory (status=3): applicant can re-edit and resubmit.
+    if (intval($row['status']) === 3) {
+        $actions .= '<li><a class="dropdown-item text-warning" data-turbo="false" href="../../views/leave/application-form.php?editID=' . (int)$row['dataID'] . '&menuslug=all-leave-application">
+                <i class="ti tabler-pencil me-2"></i>সম্পাদনা ও পুনরায় জমা
             </a></li>';
     }
 

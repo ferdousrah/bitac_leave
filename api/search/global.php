@@ -60,6 +60,7 @@ $_statusLabel = function($s) {
         0 => ['অনুমোদনের অপেক্ষায়', '#d4a056', '#fef9e6'],
         1 => ['অনুমোদিত', '#5fa885', '#e8f5ee'],
         2 => ['বাতিল/অনুমোদিত হয়নি', '#c97777', '#fbeded'],
+        3 => ['পুনঃ যাচাই', '#b8651a', '#fff3e1'],
     ];
     return $map[(int)$s] ?? ['—', '#6b7280', '#f3f4f6'];
 };
@@ -211,12 +212,14 @@ while ($empQ && ($e = mysqli_fetch_assoc($empQ))) {
         : '';
     $pLtGroup = $leaveType > 0 ? "GROUP BY la.dataID" : '';
 
-    // Pending applications for this employee
+    // Pending / actionable applications for this employee.
+    // status IN (0=pending, 2=rejected, 3=returned/পুনঃ যাচাই) — 3 was
+    // previously missing so returned applications never surfaced in search.
     $pQ = mysqli_query($con,
         "SELECT la.dataID, la.application_no, la.dateFrom, la.dateTo, la.submitDate, la.status, la.subject
          FROM leave_applications la
          $pLtJoin
-         WHERE la.applicantID = $eID AND la.status IN (0, 2)
+         WHERE la.applicantID = $eID AND la.status IN (0, 2, 3)
          $pLtGroup
          ORDER BY la.submitDate DESC
          LIMIT 10");
@@ -232,19 +235,28 @@ while ($empQ && ($e = mysqli_fetch_assoc($empQ))) {
             $totalP += (int)$sr['days'];
             $segParts[] = ($sr['leaveTitle'] ?? '') . ' (' . (int)$sr['days'] . ')';
         }
-        // Find the current signatory's name
-        $cur = mysqli_query($con,
-            "SELECT el2.employee_name AS curName FROM leave_data_for_approval lda
-             LEFT JOIN employee_list el2 ON el2.id = lda.signatory
-             WHERE lda.leaveApplicationID = " . (int)$p['dataID'] . " AND lda.isApproved = 0
-               AND (lda.isSupervisor = 1 OR lda.isSentbyAdmin = 1)
-               AND NOT EXISTS (
-                   SELECT 1 FROM leave_data_for_approval prev
-                   WHERE prev.leaveApplicationID = lda.leaveApplicationID
-                     AND prev.serial < lda.serial AND prev.isApproved = 0
-               )
-             ORDER BY lda.serial ASC LIMIT 1");
-        $curRow = $cur ? mysqli_fetch_assoc($cur) : null;
+        // Find the current signatory's name.
+        // For status=3 (পুনঃ যাচাই) the application is back with the applicant
+        // (or admin) — the signatory chain rows still exist but the app isn't
+        // sitting on any signatory's desk right now, so surface a clearer label
+        // instead of a stale supervisor name.
+        $curRow = null;
+        if ((int)$p['status'] === 3) {
+            $curRow = ['curName' => 'আবেদনকারী (সংশোধন অপেক্ষমান)'];
+        } else {
+            $cur = mysqli_query($con,
+                "SELECT el2.employee_name AS curName FROM leave_data_for_approval lda
+                 LEFT JOIN employee_list el2 ON el2.id = lda.signatory
+                 WHERE lda.leaveApplicationID = " . (int)$p['dataID'] . " AND lda.isApproved = 0
+                   AND (lda.isSupervisor = 1 OR lda.isSentbyAdmin = 1)
+                   AND NOT EXISTS (
+                       SELECT 1 FROM leave_data_for_approval prev
+                       WHERE prev.leaveApplicationID = lda.leaveApplicationID
+                         AND prev.serial < lda.serial AND prev.isApproved = 0
+                   )
+                 ORDER BY lda.serial ASC LIMIT 1");
+            $curRow = $cur ? mysqli_fetch_assoc($cur) : null;
+        }
 
         $st2 = $_statusLabel($p['status']);
         $pending[] = [

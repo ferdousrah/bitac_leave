@@ -202,6 +202,76 @@ try {
 
     mysqli_commit($con);
 
+    // ── Notify the recipient(s) that this application has been returned ──
+    // Guarded so a notification failure never blocks the return itself.
+    try {
+        if (function_exists('send_notification')) {
+            $appNo   = 'BITAC/' . date('Y', strtotime($app['submitDate'] ?? 'now')) . '/' . (int)$leaveApplicationID;
+            $noteBit = mb_substr((string)$note, 0, 120);
+            $recipients = [];
+            $msg  = '';
+            $link = 'views/leave/all-applications.php?menuslug=all-leave-application';
+
+            if ($returnType === 'to_applicant') {
+                // Notify the applicant
+                $aStmt = mysqli_prepare($con,
+                    "SELECT dataID FROM user_list WHERE employee_id = ? LIMIT 1");
+                mysqli_stmt_bind_param($aStmt, 'i', $targetEmpID);
+                mysqli_stmt_execute($aStmt);
+                if ($aRow = mysqli_fetch_assoc(mysqli_stmt_get_result($aStmt))) {
+                    $recipients[] = (int)$aRow['dataID'];
+                }
+                mysqli_stmt_close($aStmt);
+                $msg  = "আপনার ছুটির আবেদন ($appNo) সংশোধনের জন্য ফেরত পাঠানো হয়েছে। কারণ: $noteBit";
+                $link = 'views/leave/all-applications.php?menuslug=all-leave-application';
+
+            } elseif ($returnType === 'to_previous_signatory') {
+                // Notify the previous signatory
+                $pStmt = mysqli_prepare($con,
+                    "SELECT dataID FROM user_list WHERE employee_id = ? LIMIT 1");
+                mysqli_stmt_bind_param($pStmt, 'i', $targetEmpID);
+                mysqli_stmt_execute($pStmt);
+                if ($pRow = mysqli_fetch_assoc(mysqli_stmt_get_result($pStmt))) {
+                    $recipients[] = (int)$pRow['dataID'];
+                }
+                mysqli_stmt_close($pStmt);
+                $msg  = "$byName আবেদন ($appNo) পুনঃ যাচাইয়ের জন্য আপনার কাছে ফেরত পাঠিয়েছেন। কারণ: $noteBit";
+                $link = 'views/leave/approval.php?menuslug=leave-approval';
+
+            } elseif ($returnType === 'to_admin') {
+                // Notify center admin(s) of the applicant's organization
+                $applicantOrgID = 0;
+                $oStmt = mysqli_prepare($con,
+                    "SELECT organization_id FROM employee_list WHERE id = ? LIMIT 1");
+                $applicantID = (int)$app['applicantID'];
+                mysqli_stmt_bind_param($oStmt, 'i', $applicantID);
+                mysqli_stmt_execute($oStmt);
+                if ($oRow = mysqli_fetch_assoc(mysqli_stmt_get_result($oStmt))) {
+                    $applicantOrgID = (int)$oRow['organization_id'];
+                }
+                mysqli_stmt_close($oStmt);
+                if ($applicantOrgID > 0) {
+                    $caQ = mysqli_query($con,
+                        "SELECT dataID FROM user_list
+                         WHERE (isCenterAdmin = 1 OR user_group_id = 7)
+                           AND organization_id = $applicantOrgID");
+                    if ($caQ) while ($r = mysqli_fetch_assoc($caQ)) $recipients[] = (int)$r['dataID'];
+                }
+                $msg  = "$byName আবেদন ($appNo) পুনঃ যাচাইয়ের জন্য প্রশাসনিক ডেস্কে ফেরত পাঠিয়েছেন। কারণ: $noteBit";
+                $link = 'views/leave/allowed-applications.php?menuslug=allowed-leave-applications';
+            }
+
+            $recipients = array_values(array_unique(array_filter($recipients)));
+            if (!empty($recipients) && $msg !== '') {
+                send_notification($recipients, $msg, [
+                    'type'        => 'leave_returned',
+                    'link'        => $link,
+                    'isImportant' => 1,
+                ]);
+            }
+        }
+    } catch (\Throwable $e) { /* silent — notification is best-effort */ }
+
     if (function_exists('audit_log')) {
         audit_log('leave_returned', [
             'target_type' => 'leave_application',

@@ -5,19 +5,22 @@ require_once(LIBRARY_PATH . '/number_converter.php');
 // Fetch summary counts for the stats strip
 $sessionUserID     = $_SESSION['userID'] ?? '';
 $sessionEmployeeId = $getUserInfoQRW['employee_id'] ?? '';
+// Stats include ALL statuses (0=pending, 1=approved, 2=rejected, 3=returned).
+// A separate `returned` count is exposed so the UI can render its own chip
+// without hiding those applications from the "সকল" total.
 $statsSql = "
     SELECT
       COUNT(*)                                         AS total,
       SUM(CASE WHEN la.status = 0 THEN 1 ELSE 0 END)   AS pending,
       SUM(CASE WHEN la.status = 1 THEN 1 ELSE 0 END)   AS approved,
-      SUM(CASE WHEN la.status = 2 THEN 1 ELSE 0 END)   AS rejected
+      SUM(CASE WHEN la.status = 2 THEN 1 ELSE 0 END)   AS rejected,
+      SUM(CASE WHEN la.status = 3 THEN 1 ELSE 0 END)   AS returned
     FROM leave_applications la
-    WHERE la.status != 3
-      AND (la.applicantID = ? OR la.submitBy = ?)";
+    WHERE (la.applicantID = ? OR la.submitBy = ?)";
 $_stmt = mysqli_prepare($con, $statsSql);
 mysqli_stmt_bind_param($_stmt, 'ss', $sessionEmployeeId, $sessionUserID);
 mysqli_stmt_execute($_stmt);
-$_stats   = mysqli_fetch_assoc(mysqli_stmt_get_result($_stmt)) ?: ['total'=>0,'pending'=>0,'approved'=>0,'rejected'=>0];
+$_stats   = mysqli_fetch_assoc(mysqli_stmt_get_result($_stmt)) ?: ['total'=>0,'pending'=>0,'approved'=>0,'rejected'=>0,'returned'=>0];
 mysqli_stmt_close($_stmt);
 ?>
 
@@ -108,6 +111,9 @@ mysqli_stmt_close($_stmt);
                     </button>
                     <button type="button" class="filter-chip" data-filter="rejected">
                         <i class="ti tabler-circle-x me-1"></i>অনুমোদিত হয়নি <span class="chip-count"><?php echo banglaNumber((int)$_stats['rejected']); ?></span>
+                    </button>
+                    <button type="button" class="filter-chip" data-filter="returned">
+                        <i class="ti tabler-corner-up-left me-1"></i>পুনঃ যাচাই <span class="chip-count"><?php echo banglaNumber((int)$_stats['returned']); ?></span>
                     </button>
                 </div>
                 <div class="table-responsive">
