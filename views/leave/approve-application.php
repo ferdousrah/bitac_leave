@@ -204,7 +204,10 @@ $aDateTo   = !empty($app['approvedDateTo'])   ? $app['approvedDateTo']   : $app[
 $dateDiff  = abs((int)round((strtotime($aDateTo) - strtotime($aDateFrom)) / 86400)) + 1;
 $reqDiff   = abs((int)round((strtotime($app['dateTo']) - strtotime($app['dateFrom'])) / 86400)) + 1;
 
-$defaultComment = $isSupervisor ? 'সুপারিশ করা হলো।' : '';
+// মন্তব্য (note) is now required and always starts blank so the
+// approver/supervisor must type their own remark. The old auto-fill
+// meant most rows ended up with the same generic sentence.
+$defaultComment = '';
 
 // get supervisor details for potential use in comments
 $supervisorDetails = null;
@@ -924,10 +927,13 @@ if (!empty($threadEvents)) {
 
             <!-- Note / comment -->
             <div class="row mb-4">
-                <label class="col-md-3 info-label col-form-label">মন্তব্য</label>
+                <label class="col-md-3 info-label col-form-label" for="note">
+                    মন্তব্য <span class="text-danger">*</span>
+                </label>
                 <div class="col-md-9">
                     <textarea class="form-control" name="note" id="note" rows="3"
-                        ><?= htmlspecialchars($defaultComment) ?></textarea>
+                        placeholder="<?= $isSupervisor ? 'সুপারিশের মন্তব্য লিখুন...' : 'অনুমোদনের মন্তব্য লিখুন...' ?>"
+                        required><?= htmlspecialchars($defaultComment) ?></textarea>
                 </div>
             </div>
 
@@ -1338,6 +1344,23 @@ $(document).ready(function () {
     $('#approvalForm').on('submit', function (e) {
         e.preventDefault();
         var label = IS_SUPERVISOR ? 'সুপারিশ' : 'অনুমোদন';
+
+        // মন্তব্য is mandatory — block submission with a friendly error
+        var noteVal = ($('#note').val() || '').trim();
+        if (noteVal === '') {
+            Swal.fire({
+                icon: 'warning',
+                title: 'মন্তব্য প্রয়োজন',
+                text:  label + ' করার আগে মন্তব্য লিখুন।',
+                confirmButtonColor: '#ff9f43',
+                customClass: { confirmButton: 'btn btn-warning' },
+                buttonsStyling: false
+            }).then(function () {
+                $('#note').trigger('focus');
+            });
+            return;
+        }
+
         Swal.fire({
             title: 'নিশ্চিত করুন',
             text: 'আপনি কি এই আবেদনটি ' + label + ' করতে চান?',

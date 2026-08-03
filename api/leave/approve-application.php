@@ -28,6 +28,18 @@ if (!$dataID || !$leaveApplicationID) {
     exit;
 }
 
+// মন্তব্য (note) is mandatory for supervisor recommendation, signatory
+// approval, and decline alike — the UI enforces it too, but we double-
+// check on the server so a hand-crafted request can't slip through with
+// an empty remark.
+if ($note === '') {
+    $emptyMsg = ($action === 'decline')
+        ? 'না মঞ্জুরের কারণ লেখা বাধ্যতামূলক।'
+        : 'মন্তব্য লেখা বাধ্যতামূলক।';
+    echo json_encode(['status' => 0, 'message' => $emptyMsg]);
+    exit;
+}
+
 // Verify the approval row belongs to the current user
 $rowStmt = mysqli_prepare($con, "SELECT * FROM leave_data_for_approval WHERE dataID = ? AND signatory = ? LIMIT 1");
 mysqli_stmt_bind_param($rowStmt, 'ii', $dataID, $currentEmployeeID);
