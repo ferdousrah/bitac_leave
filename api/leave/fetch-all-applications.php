@@ -365,6 +365,34 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
         $status = '<span class="status-pill status-rejected"><i class="ti tabler-x me-1"></i>অনুমোদিত হয়নি</span>';
     } else if ($row['status'] == 3) {
         $status = '<span class="status-pill" style="background:#fff3e1;color:#b8651a;"><i class="ti tabler-corner-up-left me-1"></i>পুনঃ যাচাই — সম্পাদনা করুন</span>';
+
+        // Show the latest return reason + who returned it, so the applicant
+        // knows what needs to change before resubmitting.
+        $_lid = (int)$row['dataID'];
+        $_rrCheck = mysqli_query($con, "SHOW TABLES LIKE 'leave_return_history'");
+        if ($_rrCheck && mysqli_num_rows($_rrCheck) > 0) {
+            $_rrQ = mysqli_query($con,
+                "SELECT returnedByName, returnedByTitle, note, createdAt
+                 FROM leave_return_history
+                 WHERE leaveApplicationID = $_lid
+                 ORDER BY dataID DESC LIMIT 1");
+            if ($_rrQ && $_rr = mysqli_fetch_assoc($_rrQ)) {
+                $_by    = trim($_rr['returnedByName']  ?? '');
+                $_title = trim($_rr['returnedByTitle'] ?? '');
+                $_note  = trim($_rr['note']            ?? '');
+                $_when  = !empty($_rr['createdAt']) ? banglaNumber(date('d/m/Y', strtotime($_rr['createdAt']))) : '';
+                if ($_by !== '' || $_note !== '') {
+                    $status .= '<div class="mt-2 p-2" style="background:#fff8e6;border:1px solid #f0d9a8;border-radius:0.4rem;font-size:0.75rem;line-height:1.5;color:#5d3f1c;max-width:320px;">'
+                             . '<div class="fw-semibold mb-1" style="color:#8b5a1a;"><i class="ti tabler-user-x me-1"></i>ফেরত পাঠিয়েছেন'
+                             . ($_by !== '' ? ': ' . htmlspecialchars($_by) : '')
+                             . ($_title !== '' ? ' <span style="color:#8a90a6;">(' . htmlspecialchars($_title) . ')</span>' : '')
+                             . ($_when !== '' ? ' <span class="text-muted">— ' . $_when . '</span>' : '')
+                             . '</div>'
+                             . ($_note !== '' ? '<div><i class="ti tabler-message me-1"></i><strong>কারণ:</strong> ' . nl2br(htmlspecialchars($_note)) . '</div>' : '')
+                             . '</div>';
+                }
+            }
+        }
     } else if ($row['status'] == 0) {
         $status = '<span class="status-pill status-pending"><i class="ti tabler-hourglass me-1"></i>অপেক্ষমান</span>';
     }
