@@ -269,6 +269,40 @@ function generatePDFData($leaveApplicationID) {
         
         $html .= '<p>মাধ্যম: যথাযথ কর্তৃপক্ষ । </p>';
         $html .= '<p>বিষয়: ' . htmlspecialchars($leaveData['subject']) . '</p><br>';
+
+        // ── Return history callout ──────────────────────────────────
+        // If this application has ever been sent back via ফেরত পাঠান,
+        // surface the most recent return (who, when, why) right in the
+        // letter itself so the applicant and every approver can see the
+        // context of the resubmit without leaving the details view.
+        $_rhCheck = $con->query("SHOW TABLES LIKE 'leave_return_history'");
+        if ($_rhCheck && $_rhCheck->num_rows > 0) {
+            $_rh = $con->query(
+                "SELECT returnedByName, returnedByTitle, note, createdAt
+                 FROM leave_return_history
+                 WHERE leaveApplicationID = " . (int)$leaveApplicationID . "
+                 ORDER BY dataID DESC LIMIT 1");
+            if ($_rh && $_rhRow = $_rh->fetch_assoc()) {
+                $_rBy    = trim($_rhRow['returnedByName']  ?? '');
+                $_rTitle = trim($_rhRow['returnedByTitle'] ?? '');
+                $_rNote  = trim($_rhRow['note']            ?? '');
+                $_rWhen  = !empty($_rhRow['createdAt'])
+                    ? banglaNumber(date('d/m/Y', strtotime($_rhRow['createdAt'])))
+                    : '';
+                $html .= '<table cellpadding="8" cellspacing="0" style="width:100%;border:1px solid #d4a056;background:#fff8e6;margin-bottom:12px;">'
+                       . '<tr><td style="color:#5d3f1c;font-size:12px;line-height:1.6;">'
+                       . '<strong style="color:#8b5a1a;">পুনঃ যাচাই — ফেরত প্রেরণ</strong><br>'
+                       . 'এই আবেদনটি '
+                       . ($_rBy !== ''    ? '<strong>' . htmlspecialchars($_rBy) . '</strong>' : 'সংশ্লিষ্ট কর্তৃপক্ষ')
+                       . ($_rTitle !== '' ? ' (' . htmlspecialchars($_rTitle) . ')' : '')
+                       . ' কর্তৃক'
+                       . ($_rWhen !== ''  ? ' <strong>' . $_rWhen . '</strong> তারিখে' : '')
+                       . ' সংশোধনের জন্য ফেরত পাঠানো হয়েছিল।'
+                       . ($_rNote !== ''  ? '<br><strong>কারণ:</strong> ' . nl2br(htmlspecialchars($_rNote)) : '')
+                       . '</td></tr></table>';
+            }
+        }
+
         $html .= '<p>মহোদয়,</p>';
         
         // ── Fetch segments (PDF = applicant's letter, so use 'requested' kind) ──
