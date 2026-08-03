@@ -454,14 +454,17 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
         }
     }
 
-    // Actions
+    // Actions — label the application-details link differently for
+    // returned rows so the applicant knows this is the send-back copy.
+    $_appDocLabel = ((int)$row['status'] === 3) ? 'ফেরতকৃত আবেদন' : 'আবেদনপত্র';
+    $_appDocIcon  = ((int)$row['status'] === 3) ? 'tabler-file-alert' : 'tabler-file-text';
     $actions = '<div class="btn-group">
         <button type="button" class="btn btn-icon btn-outline-primary btn-sm rounded-circle action-btn" data-bs-toggle="dropdown" aria-expanded="false" title="কার্যাবলী">
             <i class="ti tabler-dots-vertical"></i>
         </button>
         <ul class="dropdown-menu dropdown-menu-end shadow-sm">
             <li><a class="dropdown-item" href="../../views/leave/application-details.php?menuslug=all-leave-application&leaveApplicationID=' . $row['dataID'] . '" target="_blank">
-                <i class="ti tabler-file-text me-2"></i>আবেদনপত্র
+                <i class="ti ' . $_appDocIcon . ' me-2"></i>' . $_appDocLabel . '
             </a></li>';
 
     // Edit/Delete only when:
