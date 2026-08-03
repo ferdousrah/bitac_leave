@@ -366,7 +366,8 @@ function loadContent() {
                 'optional-pre-approval-queue',
                 'leave-approval',
                 'leave-joining-approval',
-                'allowed-leave-applications'
+                'allowed-leave-applications',
+                'all-leave-application'
             ];
 
             slugs.forEach(function(slug) {

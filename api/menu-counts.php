@@ -210,6 +210,23 @@ if ($myOrgID > 0 || $isSuperAdmin) {
     $counts['allowed-leave-applications'] = 0;
 }
 
+// ═══ 5b. ছুটির ইতিহাস ও যোগদান (all-leave-application) ═══
+// Applicant-side badge: how many of MY own applications have been sent
+// back for পুনঃ যাচাই and need to be edited + resubmitted. Mirrors the
+// filter used by the "পুনঃ যাচাই" chip on views/leave/all-applications.php.
+$myUserID = (int)($_SESSION['userID'] ?? 0);
+if ($myEmpID > 0 || $myUserID > 0) {
+    $q = mysqli_query($con, "
+        SELECT COUNT(*) AS c
+        FROM leave_applications la
+        WHERE la.status = 3
+          AND (la.applicantID = $myEmpID OR la.submitBy = $myUserID)
+    ");
+    $counts['all-leave-application'] = (int)(mysqli_fetch_assoc($q)['c'] ?? 0);
+} else {
+    $counts['all-leave-application'] = 0;
+}
+
 // ═══ 6. যোগদানের সুপারিশ ও অনুমোদন (leave-joining-approval) — chain-based ═══
 if ($myEmpID > 0) {
     $chk = mysqli_query($con, "SHOW TABLES LIKE 'leave_joining_data_for_approval'");
@@ -247,6 +264,7 @@ $leaveModuleSlugs = [
     'optional-pre-approval-queue',
     'leave-approval',
     'leave-joining-approval',
+    'all-leave-application',
 ];
 $adminPanelSlugs = [
     'allowed-leave-applications',
