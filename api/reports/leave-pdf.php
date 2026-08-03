@@ -334,14 +334,22 @@ th { font-weight: normal; }
         <th <?=$thc?>>দিন</th>
     </tr>
     <?php
-    $lTypeLabels = [1=>'গড় বেতন', 2=>'অর্ধ-গড় বেতন', 3=>'নৈমিত্তিক (Casual Leave)', 4=>'বিনা বেতনে ছুটি', 5=>'ঐচ্ছিক (Optional Leave)', 6=>'কর্তনহীন ছুটি', 10=>'অসাধারণ ছুটি'];
+    // Pull the labels straight from leave_types so we always match the DB.
+    // The old hardcoded $lTypeLabels used ids (1..10) that did NOT map to
+    // real leave_types.leaveID values (which include 8, 18, 19, 21, 22 etc.),
+    // so many rows were mislabelled in the generated PDF.
+    $lTypeLabels = [];
+    $_labQ = mysqli_query($con, "SELECT leaveID, leaveTitle FROM leave_types");
+    while ($_labR = mysqli_fetch_assoc($_labQ)) {
+        $lTypeLabels[(int)$_labR['leaveID']] = $_labR['leaveTitle'];
+    }
     $sl = 1;
     while ($lr = mysqli_fetch_assoc($leaveAppsQ)) {
         $ltQ  = mysqli_query($con, "SELECT * FROM leave_types WHERE leaveID='" . intval($lr['approvedLeaveType']) . "'");
         $ltR  = mysqli_fetch_assoc($ltQ);
         $dateF = date_create($lr['approvedDateFrom']);
         $dateT = date_create($lr['approvedDateTo']);
-        $approvedLType = $lTypeLabels[$lr['leaveTypeInTwo']] ?? '';
+        $approvedLType = $lTypeLabels[(int)$lr['leaveTypeInTwo']] ?? '';
     ?>
     <tr>
         <td <?=$tc?>><?=$obj->engToBn($sl)?></td>
@@ -363,7 +371,8 @@ th { font-weight: normal; }
         <th <?=$thc?>>মন্তব্য</th>
     </tr>
     <?php
-    $leaveLabels = [1=>'গড় বেতন', 2=>'অর্ধ-গড় বেতন', 3=>'নৈমিত্তিক (Casual Leave)', 4=>'বিনা বেতনে ছুটি', 5=>'ঐচ্ছিক ছুটি', 6=>'কর্তনহীন ছুটি', 10=>'অসাধারণ ছুটি'];
+    // Same DB-backed lookup for deductions (see note above the first map).
+    $leaveLabels = $lTypeLabels;
     $n = 1;
     while ($ld = mysqli_fetch_assoc($leaveDedQ)) { ?>
     <tr>

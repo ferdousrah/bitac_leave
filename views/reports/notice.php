@@ -8,6 +8,15 @@ $getAllEmployeeListQ = mysqli_query($con, "SELECT employee_list.*, job_title.job
     WHERE employment_status=1 OR employment_status=2
     ORDER BY employee_id ASC");
 
+// Pull the real leave-type list from DB. The old hardcoded dropdown used
+// values (1..10) that did NOT match leave_types.leaveID, so filtering by
+// leave type (e.g. Casual Leave) matched zero rows even when data existed.
+$leaveTypeOptions = [];
+$_ltRes = mysqli_query($con, "SELECT leaveID, leaveTitle FROM leave_types ORDER BY leaveID");
+while ($_ltRow = mysqli_fetch_assoc($_ltRes)) {
+    $leaveTypeOptions[(int)$_ltRow['leaveID']] = $_ltRow['leaveTitle'];
+}
+
 function Bengali_DTN($NRS){
     $englDTN = array('1','2','3','4','5','6','7','8','9','0');
     $bangDTN = array('১','২','৩','৪','৫','৬','৭','৮','৯','০');
@@ -172,13 +181,11 @@ $menuslug = htmlspecialchars($_GET['menuslug'] ?? 'office-notice');
                     <label class="form-label" for="leaveTypeInTwo">ডিডাক্ট ফ্রম</label>
                     <select class="form-select" name="leaveTypeInTwo" id="leaveTypeInTwo">
                         <option value=''>সকল ধরন</option>
-                        <option value="1" <?= (isset($_POST['leaveTypeInTwo']) && $_POST['leaveTypeInTwo']=='1') ? 'selected' : '' ?>>গড় বেতন</option>
-                        <option value="2" <?= (isset($_POST['leaveTypeInTwo']) && $_POST['leaveTypeInTwo']=='2') ? 'selected' : '' ?>>অর্ধ-গড় বেতন</option>
-                        <option value="3" <?= (isset($_POST['leaveTypeInTwo']) && $_POST['leaveTypeInTwo']=='3') ? 'selected' : '' ?>>নৈমিত্তিক (Casual Leave)</option>
-                        <option value="4" <?= (isset($_POST['leaveTypeInTwo']) && $_POST['leaveTypeInTwo']=='4') ? 'selected' : '' ?>>বিনা বেতনে ছুটি</option>
-                        <option value="5" <?= (isset($_POST['leaveTypeInTwo']) && $_POST['leaveTypeInTwo']=='5') ? 'selected' : '' ?>>ঐচ্ছিক ছুটি</option>
-                        <option value="6" <?= (isset($_POST['leaveTypeInTwo']) && $_POST['leaveTypeInTwo']=='6') ? 'selected' : '' ?>>কর্তনহীন ছুটি</option>
-                        <option value="10" <?= (isset($_POST['leaveTypeInTwo']) && $_POST['leaveTypeInTwo']=='10') ? 'selected' : '' ?>>অসাধারণ ছুটি</option>
+                        <?php foreach ($leaveTypeOptions as $ltID => $ltTitle): ?>
+                            <option value="<?= $ltID ?>" <?= (isset($_POST['leaveTypeInTwo']) && (string)$_POST['leaveTypeInTwo'] === (string)$ltID) ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($ltTitle) ?>
+                            </option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
 
@@ -252,12 +259,8 @@ $menuslug = htmlspecialchars($_GET['menuslug'] ?? 'office-notice');
                         $getSectionDetailsQ = mysqli_query($con, "SELECT * FROM sections WHERE id='$getEmployeeDetailsQW[section_id]'");
                         $getSectionDetailsQRW = mysqli_fetch_assoc($getSectionDetailsQ);
 
-                        $leaveTypeMap = [
-                            1 => 'গড় বেতন', 2 => 'অর্ধ-গড় বেতন', 3 => 'নৈমিত্তিক (Casual Leave)',
-                            4 => 'বিনা বেতনে ছুটি', 5 => 'ঐচ্ছিক ছুটি', 6 => 'কর্তনহীন ছুটি',
-                            10 => 'অসাধারণ ছুটি'
-                        ];
-                        $leaveType = $leaveTypeMap[(int)$dataRow['leaveTypeInTwo']] ?? '';
+                        // Use the DB-backed map built up-top so the label always matches leave_types
+                        $leaveType = $leaveTypeOptions[(int)$dataRow['leaveTypeInTwo']] ?? '';
                     ?>
                     <tr>
                         <td class="text-muted"><?= $sl ?></td>

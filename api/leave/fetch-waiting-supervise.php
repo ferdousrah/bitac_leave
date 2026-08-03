@@ -186,13 +186,11 @@ while ($empRow = mysqli_fetch_array($query)) {
             $adateDiff = dateDiffInDays($getLeaveApplicationDetailsQRW['approvedDateFrom'], $getLeaveApplicationDetailsQRW['approvedDateTo']) + 1;
         }
 
-        $leaveTypeInTwoMap = [
-            1 => 'গড় বেতন', 2 => 'অর্ধ-গড় বেতন', 3 => 'নৈমিত্তিক (Casual Leave)',
-            4 => 'বিনা বেতনে ছুটি', 5 => 'ঐচ্ছিক ছুটি', 6 => 'সংগনিরোধ ছুটি',
-            7 => 'প্রসূতি ছুটি', 8 => 'অক্ষমতাজনিত বিশেষ ছুটি', 9 => 'অধ্যয়ন ছুটি',
-            10 => 'অসাধারণ ছুটি',
-        ];
-        $proposed_leave_type = $leaveTypeInTwoMap[$getLeaveApplicationDetailsQRW['leaveTypeInTwo']] ?? '';
+        // The old $leaveTypeInTwoMap here mislabelled leave types because its
+        // hardcoded keys never matched the real leave_types.leaveID values.
+        // At this "waiting to supervise" stage the applicant hasn't been
+        // approved yet, so the proposed leave equals the requested leave type.
+        $proposed_leave_type = $getLeaveTypeQRW['leaveTitle'] ?? '';
 
         // ── Applicant cell (avatar + name + designation) ───────────
         $empName = trim($empRow['applicant_name'] ?? '');

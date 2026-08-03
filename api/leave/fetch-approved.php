@@ -152,11 +152,12 @@ $query = mysqli_stmt_get_result($mainStmt);
 $data = array();
 $sl = $start;
 
-$leaveTypeInTwoMap = [
-    1 => 'গড় বেতন', 2 => 'অর্ধ-গড় বেতন', 3 => 'নৈমিত্তিক (Casual Leave)',
-    4 => 'বিনা বেতনে ছুটি', 5 => 'ঐচ্ছিক ছুটি', 6 => 'সংগনিরোধ ছুটি',
-    7 => 'প্রসূতি ছুটি', 8 => 'অক্ষমতাজনিত বিশেষ ছুটি', 9 => 'অধ্যয়ন ছুটি', 10 => 'অসাধারণ ছুটি',
-];
+// NOTE: A hardcoded $leaveTypeInTwoMap used to live here, but its keys did
+// NOT match the actual leave_types.leaveID values in the DB (e.g. map said
+// 3=Casual/8=Disability, but real DB has 8=Casual/19=Disability). It made
+// the "proposed leave" column show the wrong type for many applications.
+// We now use the correct leave_types row joined as `alt.leaveTitle`
+// (approvedLeaveTitle) which is always in sync with the DB.
 
 while ($row = mysqli_fetch_assoc($query)) {
     $sl++;
@@ -173,7 +174,10 @@ while ($row = mysqli_fetch_assoc($query)) {
         $adateDiff = dateDiffInDays($row['approvedDateFrom'], $row['approvedDateTo']) + 1;
     }
 
-    $proposed_leave_type = $leaveTypeInTwoMap[$row['leaveTypeInTwo']] ?? '';
+    // Prefer the JOINed approvedLeaveType title; fall back to requested leaveType title
+    $proposed_leave_type = trim($row['approvedLeaveTitle'] ?? '') !== ''
+        ? $row['approvedLeaveTitle']
+        : ($row['leaveTitle'] ?? '');
 
     // Applicant cell
     $empName  = trim($row['applicant_name'] ?? '');

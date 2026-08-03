@@ -14,21 +14,22 @@ function dateDiffInDays($date1, $date2) {
     return abs(round($diff / 86400));
 }
 
-// Helper: Leave type mapping
+// Helper: Leave type text lookup — sourced from leave_types table so the
+// label always matches the DB. The previous hardcoded map had keys that
+// did NOT correspond to real leave_types.leaveID values (e.g. it said
+// 3=Casual, 8=Disability while the DB has 8=Casual, 19=Disability),
+// producing wrong labels in the waiting-approve list.
 function getLeaveTypeText($type) {
-    $types = [
-        1 => "গড় বেতন",
-        2 => "অর্ধ-গড় বেতন",
-        3 => "নৈমিত্তিক (Casual Leave)",
-        4 => "বিনা বেতনে ছুটি",
-        5 => "ঐচ্ছিক ছুটি",
-        6 => "সংগনিরোধ ছুটি",
-        7 => "প্রসূতি ছুটি",
-        8 => "অক্ষমতাজনিত বিশেষ ছুটি",
-        9 => "অধ্যয়ন ছুটি",
-        10 => "অসাধারণ ছুটি"
-    ];
-    return $types[$type] ?? '';
+    global $con;
+    static $cache = null;
+    if ($cache === null) {
+        $cache = [];
+        $r = mysqli_query($con, "SELECT leaveID, leaveTitle FROM leave_types");
+        while ($row = mysqli_fetch_assoc($r)) {
+            $cache[(int)$row['leaveID']] = $row['leaveTitle'];
+        }
+    }
+    return $cache[(int)$type] ?? '';
 }
 
 // Sanitize and fetch user
@@ -99,15 +100,15 @@ $columnIndex = intval($request['order'][0]['column']);
 $sortColumn = $columns[$columnIndex];
 $sortDir = $request['order'][0]['dir'] === 'desc' ? 'DESC' : 'ASC';
 
-$sql = "SELECT 
-    leave_data_for_approval.dataID AS approvalDataID, 
-    leave_applications.dataID AS applicationID, 
-    leave_data_for_approval.*, 
-    leave_applications.*, 
-    employee_list.employee_name, 
-    employee_list.employee_id 
-$sql_base $search_sql 
-ORDER BY $sortColumn $sortDir 
+$sql = "SELECT
+    leave_data_for_approval.dataID AS approvalDataID,
+    leave_applications.dataID AS applicationID,
+    leave_data_for_approval.*,
+    leave_applications.*,
+    employee_list.employee_name,
+    employee_list.employee_id
+$sql_base $search_sql
+ORDER BY $sortColumn $sortDir
 LIMIT $start, $length";
 
 $query = mysqli_query($con, $sql);
@@ -125,10 +126,10 @@ while ($row = mysqli_fetch_assoc($query)) {
         $proceed = 1;
     } else {
         $prevserial = $row['serial'] - 1;
-        $checkPrev = mysqli_query($con, "SELECT * FROM leave_data_for_approval 
-            WHERE leaveApplicationID = '{$row['applicationID']}' 
-            AND signatory = '{$row['prevSignatory']}' 
-            AND isApproved = 1 
+        $checkPrev = mysqli_query($con, "SELECT * FROM leave_data_for_approval
+            WHERE leaveApplicationID = '{$row['applicationID']}'
+            AND signatory = '{$row['prevSignatory']}'
+            AND isApproved = 1
             AND serial = '$prevserial'");
         if (mysqli_num_rows($checkPrev) > 0) {
             $proceed = 1;

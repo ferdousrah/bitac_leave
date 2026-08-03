@@ -364,12 +364,20 @@ th { font-weight: normal; }
         <th <?=$thc?>>দিন</th>
     </tr>
     <?php
+    // Build the leave-type label map from the DB so it always matches
+    // leave_types. The old hardcoded map used ids (1..5) that didn't
+    // cover the real leaveIDs (8, 18, 19, 21, 22, ...) and produced
+    // wrong or empty labels in the personal leave PDF.
+    $lTypeLabels = [];
+    $_labQ = mysqli_query($con, "SELECT leaveID, leaveTitle FROM leave_types");
+    while ($_labR = mysqli_fetch_assoc($_labQ)) {
+        $lTypeLabels[(int)$_labR['leaveID']] = $_labR['leaveTitle'];
+    }
     $sl = 1;
     while ($lrow = mysqli_fetch_array($getLeaveApplicationsQ)) {
         $dateF = date_create($lrow['approvedDateFrom']);
         $dateT = date_create($lrow['approvedDateTo']);
-        $lTypeLabels = [1=>'গড় বেতন', 2=>'অর্ধ-গড় বেতন', 3=>'নৈমিত্তিক (Casual Leave)', 4=>'অসাধারণ(বিনা বেতনে ছুটি)', 5=>'ঐচ্ছিক (Optional Leave)'];
-        $approvedLType = $lTypeLabels[$lrow['leaveTypeInTwo']] ?? '';
+        $approvedLType = $lTypeLabels[(int)$lrow['leaveTypeInTwo']] ?? '';
     ?>
     <tr>
         <td <?=$tc?>><?=$obj->engToBn($sl)?></td>
@@ -392,8 +400,9 @@ th { font-weight: normal; }
         <th <?=$thc?>>মন্তব্য</th>
     </tr>
     <?php
+    // Reuse the DB-backed $lTypeLabels built above for the deduction table too.
+    $leaveLabels = $lTypeLabels;
     $n = 1;
-    $leaveLabels = [1=>'গড় বেতন', 2=>'অর্ধ-গড় বেতন', 3=>'নৈমিত্তিক (Casual Leave)', 4=>'অসাধারণ(বিনা বেতনে ছুটি)', 5=>'ঐচ্ছিক (Optional Leave)'];
     while ($ldRow = mysqli_fetch_assoc($getLeaveDeductionQ)) {
     ?>
     <tr>

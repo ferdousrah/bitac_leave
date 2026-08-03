@@ -158,25 +158,23 @@ function generatePDFData($leaveApplicationID) {
         $approvedLeaveType = "";
         $prevApprovedLeaveType = "";
         
-        $leaveTypeMap = [
-            1 => "গড় বেতন ",
-            2 => "অর্ধ-গড় বেতন ",
-            3 => "নৈমিত্তিক (Casual Leave)",
-            4 => "বিনা বেতনে ছুটি",
-            5 => "ঐচ্ছিক (Optional Leave)",
-            6 => "সংগনিরোধ ছুটি",
-            7 => "প্রসূতি ছুটি",
-            8 => "অক্ষমতাজনিত বিশেষ ছুটি",
-            9 => "অধ্যয়ন ছুটি",
-            10 => "অসাধারণ ছুটি"
-        ];
-        
-        if (isset($leaveTypeMap[$joiningData['approvedLeaveType']])) {
-            $approvedLeaveType = $leaveTypeMap[$joiningData['approvedLeaveType']];
+        // Build the leave-type label map from the DB so it always matches
+        // leave_types. The old hardcoded map used ids (1..10) that did NOT
+        // correspond to real leave_types.leaveID values (e.g. Casual is 8
+        // in the DB, not 3), so joining/office-notice output was labelled
+        // with the wrong leave type.
+        $leaveTypeMap = [];
+        $_labQ = mysqli_query($con, "SELECT leaveID, leaveTitle FROM leave_types");
+        while ($_labR = mysqli_fetch_assoc($_labQ)) {
+            $leaveTypeMap[(int)$_labR['leaveID']] = $_labR['leaveTitle'];
         }
-        
-        if (isset($leaveTypeMap[$leaveData['leaveTypeInTwo']])) {
-            $prevApprovedLeaveType = $leaveTypeMap[$leaveData['leaveTypeInTwo']];
+
+        if (isset($leaveTypeMap[(int)$joiningData['approvedLeaveType']])) {
+            $approvedLeaveType = $leaveTypeMap[(int)$joiningData['approvedLeaveType']];
+        }
+
+        if (isset($leaveTypeMap[(int)$leaveData['leaveTypeInTwo']])) {
+            $prevApprovedLeaveType = $leaveTypeMap[(int)$leaveData['leaveTypeInTwo']];
         }
         
         // Get signatory (hardcoded user_list.dataID=88 in original)
