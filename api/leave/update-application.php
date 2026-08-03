@@ -19,7 +19,9 @@ mysqli_stmt_close($uStmt);
 $userEmpId = (int)($userRow['employee_id'] ?? 0);
 if ($userEmpId <= 0) { echo 0; exit; }
 
-// Verify ownership + editability
+// Verify ownership + editability. Allowed states:
+//   0 = pending  (regular edit before any signatory acts)
+//   3 = returned (applicant editing a "পুনঃ যাচাই" send-back for resubmit)
 $aStmt = mysqli_prepare($con,
     "SELECT applicantID, status, attachment FROM leave_applications WHERE dataID = ? LIMIT 1");
 mysqli_stmt_bind_param($aStmt, 'i', $editID);
@@ -28,7 +30,8 @@ $existing = mysqli_fetch_assoc(mysqli_stmt_get_result($aStmt));
 mysqli_stmt_close($aStmt);
 if (!$existing) { echo 0; exit; }
 if ((int)$existing['applicantID'] !== $userEmpId) { echo 0; exit; }
-if ((int)$existing['status'] !== 0) { echo 0; exit; }
+if (!in_array((int)$existing['status'], [0, 3], true)) { echo 0; exit; }
+$wasReturned = ((int)$existing['status'] === 3);
 
 $cStmt = mysqli_prepare($con,
     "SELECT COUNT(*) c FROM leave_data_for_approval WHERE leaveApplicationID = ? AND isApproved = 1");
@@ -163,9 +166,52 @@ try {
         mysqli_stmt_bind_param($supU, 'ii', $supervisorID, $editID);
         mysqli_stmt_execute($supU);
         mysqli_stmt_close($supU);
+    } elseif ($wasReturned) {
+        // Resubmitting a returned application without changing supervisor —
+        // still reset isRead so the supervisor sees it fresh in their queue.
+        $supU = mysqli_prepare($con,
+            "UPDATE leave_data_for_approval SET isRead=0
+             WHERE leaveApplicationID=? AND isSupervisor=1");
+        mysqli_stmt_bind_param($supU, 'i', $editID);
+        mysqli_stmt_execute($supU);
+        mysqli_stmt_close($supU);
     }
 
     mysqli_commit($con);
+
+    // On a returned-application resubmit, notify the current supervisor so
+    // they know it's back in their queue. Best-effort — never fails the save.
+    if ($wasReturned) {
+        try {
+            if (function_exists('send_notification')) {
+                $sqQ = mysqli_prepare($con,
+                    "SELECT ul.dataID
+                     FROM leave_data_for_approval ldfa
+                     INNER JOIN user_list ul ON ul.employee_id = ldfa.signatory
+                     WHERE ldfa.leaveApplicationID = ? AND ldfa.isSupervisor = 1
+                     LIMIT 1");
+                mysqli_stmt_bind_param($sqQ, 'i', $editID);
+                mysqli_stmt_execute($sqQ);
+                $supRow = mysqli_fetch_assoc(mysqli_stmt_get_result($sqQ)) ?: [];
+                mysqli_stmt_close($sqQ);
+                $supUserID = (int)($supRow['dataID'] ?? 0);
+                if ($supUserID > 0) {
+                    $nameQ = mysqli_prepare($con,
+                        "SELECT el.employee_name FROM employee_list el WHERE el.id = ? LIMIT 1");
+                    mysqli_stmt_bind_param($nameQ, 'i', $userEmpId);
+                    mysqli_stmt_execute($nameQ);
+                    $meRow = mysqli_fetch_assoc(mysqli_stmt_get_result($nameQ)) ?: [];
+                    mysqli_stmt_close($nameQ);
+                    $appNo = 'BITAC/' . date('Y') . '/' . (int)$editID;
+                    send_notification([$supUserID],
+                        ($meRow['employee_name'] ?? 'আবেদনকারী') . " পুনঃ যাচাইয়ের পরে আবেদন ($appNo) সংশোধন করে পুনরায় জমা দিয়েছেন",
+                        ['type' => 'leave_resubmitted',
+                         'link' => 'views/leave/approval.php?menuslug=leave-approval',
+                         'isImportant' => 1]);
+                }
+            }
+        } catch (\Throwable $e) { /* silent */ }
+    }
 
     if (function_exists('audit_log')) {
         audit_log('leave_application_resubmitted', [
