@@ -178,8 +178,12 @@ if ($myEmpID > 0) {
 // Mid-chain rows (isSupervisor=0 AND isSentbyAdmin=0) belong to a different
 // list, so we exclude them from THIS submenu's count.
 if ($myEmpID > 0) {
-    // Exclude status=3 (আবেদন applicant-এর কাছে ফেরত) so returned apps
-    // don't inflate the badge — they belong on the applicant's side.
+    // Match fetch-waiting-approve.php's actionable-row filter exactly:
+    //   * exclude status=3 (returned to applicant)
+    //   * for non-supervisor rows, require the previous signatory in
+    //     the chain to have approved (serial = current - 1) — otherwise
+    //     the badge over-counts by including rows the user cannot yet
+    //     act on because the ball is still with someone earlier.
     $q = mysqli_query($con, "
         SELECT COUNT(*) AS c
         FROM leave_data_for_approval la
@@ -188,6 +192,18 @@ if ($myEmpID > 0) {
           AND la.isApproved = 0
           AND (la.isSupervisor = 1 OR la.isSentbyAdmin = 1)
           AND l.status <> 3
+          AND (
+              la.isSupervisor = 1
+              OR la.prevSignatory = 0
+              OR la.prevSignatory IS NULL
+              OR EXISTS (
+                  SELECT 1 FROM leave_data_for_approval prev
+                  WHERE prev.leaveApplicationID = la.leaveApplicationID
+                    AND prev.signatory = la.prevSignatory
+                    AND prev.isApproved = 1
+                    AND prev.serial    = la.serial - 1
+              )
+          )
     ");
     $counts['leave-approval'] = (int)(mysqli_fetch_assoc($q)['c'] ?? 0);
 } else {
