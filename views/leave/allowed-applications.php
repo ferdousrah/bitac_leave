@@ -17,11 +17,37 @@ $pendingCount = (int)(mysqli_fetch_assoc(mysqli_query($con,
      INNER JOIN leave_applications ON leave_data_for_approval.leaveApplicationID = leave_applications.dataID
      WHERE leave_data_for_approval.isSupervisor=1 AND leave_data_for_approval.isApproved=1
        AND leave_applications.organization_id='$orgID' AND leave_data_for_approval.isSentbyAdmin=0"))['c'] ?? 0);
+
+// সম্পাদিত = forwarded but the chain hasn't finished (status != 1)
 $editedCount = (int)(mysqli_fetch_assoc(mysqli_query($con,
     "SELECT COUNT(*) AS c FROM `leave_data_for_approval`
      INNER JOIN leave_applications ON leave_data_for_approval.leaveApplicationID = leave_applications.dataID
      WHERE leave_data_for_approval.isSupervisor=1 AND leave_data_for_approval.isApproved=1
-       AND leave_applications.organization_id='$orgID' AND leave_data_for_approval.isSentbyAdmin=1"))['c'] ?? 0);
+       AND leave_applications.organization_id='$orgID' AND leave_data_for_approval.isSentbyAdmin=1
+       AND leave_applications.status <> 1"))['c'] ?? 0);
+
+// অনুমোদিত = fully approved (status = 1) after admin forwarding
+$approvedCount = (int)(mysqli_fetch_assoc(mysqli_query($con,
+    "SELECT COUNT(*) AS c FROM `leave_data_for_approval`
+     INNER JOIN leave_applications ON leave_data_for_approval.leaveApplicationID = leave_applications.dataID
+     WHERE leave_data_for_approval.isSupervisor=1 AND leave_data_for_approval.isApproved=1
+       AND leave_applications.organization_id='$orgID' AND leave_data_for_approval.isSentbyAdmin=1
+       AND leave_applications.status = 1"))['c'] ?? 0);
+
+// পুনঃ যাচাই count — applications signatories have sent back to admin desk
+// AND that are NOT yet finally approved (those move to the অনুমোদিত tab).
+$returnedCount = 0;
+$_rrChk = mysqli_query($con, "SHOW TABLES LIKE 'leave_return_history'");
+if ($_rrChk && mysqli_num_rows($_rrChk) > 0) {
+    $returnedCount = (int)(mysqli_fetch_assoc(mysqli_query($con,
+        "SELECT COUNT(*) AS c
+         FROM leave_return_history lrh
+         INNER JOIN leave_applications la ON lrh.leaveApplicationID = la.dataID
+         INNER JOIN employee_list el      ON la.applicantID          = el.id
+         WHERE lrh.returnType = 'to_admin'
+           AND la.status <> 1
+           AND el.organization_id = '$orgID'"))['c'] ?? 0);
+}
 
 // Filter dropdowns (scoped to viewer's org)
 $secOptions = '';
@@ -87,11 +113,28 @@ while ($l = mysqli_fetch_assoc($ltQ)) {
                     <span class="badge ms-2"><?php echo banglaNumber($pendingCount); ?></span>
                 </button>
             </li>
-            <li class="nav-item">
-                <button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#editedLeaves" role="tab">
+<li class="nav-item">
+                <button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#editedLeaves" role="tab"
+                        title="ফরওয়ার্ড করা হয়েছে — চূড়ান্ত অনুমোদন এখনো হয়নি">
                     <i class="ti tabler-edit-circle me-2"></i>
                     <span class="d-none d-sm-inline">সম্পাদিত</span>
                     <span class="badge ms-2"><?php echo banglaNumber($editedCount); ?></span>
+                </button>
+            </li>
+            <li class="nav-item">
+                <button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#approvedLeaves" role="tab"
+                        title="যেসব আবেদন সম্পূর্ণ অনুমোদিত হয়েছে">
+                    <i class="ti tabler-circle-check me-2"></i>
+                    <span class="d-none d-sm-inline">অনুমোদিত</span>
+                    <span class="badge bg-label-success ms-2"><?php echo banglaNumber($approvedCount); ?></span>
+                </button>
+            </li>
+            <li class="nav-item">
+                <button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#returnedToAdmin" role="tab"
+                        title="সিদ্ধান্তকারীগণ যেসব আবেদন ফেরত পাঠিয়েছেন প্রশাসনিক ডেস্কে">
+                    <i class="ti tabler-corner-up-left me-2"></i>
+                    <span class="d-none d-sm-inline">পুনঃ যাচাই</span>
+                    <span class="badge bg-label-warning ms-2"><?php echo banglaNumber($returnedCount); ?></span>
                 </button>
             </li>
         </ul>
@@ -139,6 +182,55 @@ while ($l = mysqli_fetch_assoc($ltQ)) {
                     </table>
                 </div>
             </div>
+
+            <!-- Tab 3: Approved (অনুমোদিত) — final-approved apps -->
+            <div class="tab-pane fade" id="approvedLeaves" role="tabpanel">
+                <?php $scope = 'appr'; require __DIR__ . '/allowed-applications-filter.inc.php'; ?>
+                <div class="table-responsive">
+                    <table id="approvedLeaveTable" class="table modern-leave-table align-middle" style="width:100%">
+                        <thead>
+                            <tr>
+                                <th>ক্রমিক</th>
+                                <th>আবেদনকারী</th>
+                                <th>আবেদনের সময়</th>
+                                <th>চাহিত ছুটি</th>
+                                <th>প্রস্তাবিত ছুটি</th>
+                                <th>স্টেটাস</th>
+                                <th>স্বাক্ষরকারীগণ</th>
+                                <th class="text-center">কার্যাবলী</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tab 4: Returned-to-admin (পুনঃ যাচাই) — tracking view -->
+            <div class="tab-pane fade" id="returnedToAdmin" role="tabpanel">
+                <div class="alert alert-warning d-flex align-items-start gap-2 mb-3" role="alert" style="border-radius:0.5rem;">
+                    <i class="ti tabler-info-circle mt-1"></i>
+                    <div>
+                        <strong>পুনঃ যাচাই</strong> — সিদ্ধান্তকারীগণ যেসব আবেদন সংশোধনের জন্য প্রশাসনিক ডেস্কে ফেরত পাঠিয়েছেন।
+                        এখান থেকে সম্পাদনা করে পুনরায় ফরওয়ার্ড করুন।
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table id="returnedToAdminTable" class="table modern-leave-table align-middle" style="width:100%">
+                        <thead>
+                            <tr>
+                                <th>ক্রমিক</th>
+                                <th>আবেদনকারী</th>
+                                <th>চাহিত ছুটি</th>
+                                <th>ফেরত পাঠিয়েছেন</th>
+                                <th>ফেরতের কারণ</th>
+                                <th>বর্তমান অবস্থা</th>
+                                <th class="text-center">কার্যাবলী</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -146,7 +238,7 @@ while ($l = mysqli_fetch_assoc($ltQ)) {
 <?php require_once(__DIR__ . '/../../includes/footer_vuexy.php'); ?>
 
 <script>
-var employeeTableInstance, inactiveEmployeeTableInstance;
+var employeeTableInstance, inactiveEmployeeTableInstance, returnedToAdminTableInstance;
 
 var dtLang = {
     processing: '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">লোড হচ্ছে...</span></div>',
@@ -230,9 +322,12 @@ function initFilterControls(scope) {
     }
 }
 
+var approvedLeaveTableInstance;
+
 function reloadTable(scope) {
     if (scope === 'pend' && employeeTableInstance) employeeTableInstance.ajax.reload();
     if (scope === 'edit' && inactiveEmployeeTableInstance) inactiveEmployeeTableInstance.ajax.reload();
+    if (scope === 'appr' && approvedLeaveTableInstance)    approvedLeaveTableInstance.ajax.reload();
 }
 
 $(document).ready(function() {
@@ -319,7 +414,7 @@ $(document).ready(function() {
         btn.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); _toggleFilterPanel(btn); });
     });
 
-    // Edited DataTable (lazy)
+    // Edited DataTable (lazy) — forwarded but the chain hasn't approved yet
     $('button[data-bs-target="#editedLeaves"]').on('shown.bs.tab', function () {
         if (!inactiveEmployeeTableInstance) {
             initFilterControls('edit');
@@ -331,7 +426,7 @@ $(document).ready(function() {
                 ajax: {
                     url: "../../api/leave/fetch-forwarded.php",
                     type: "POST",
-                    data: function(d) { Object.assign(d, buildPayload('edit')); }
+                    data: function(d) { Object.assign(d, buildPayload('edit'), { viewMode: 'edited' }); }
                 },
                 columns: [
                     { data: "sl", orderable: false },
@@ -358,6 +453,87 @@ $(document).ready(function() {
                 lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "সকল"]],
                 language: dtLang
             });
+        }
+    });
+
+    // Approved DataTable (lazy) — fully-approved apps that were forwarded from
+    // this admin desk. Reuses fetch-forwarded.php with viewMode='approved'.
+    $('button[data-bs-target="#approvedLeaves"]').on('shown.bs.tab', function () {
+        if (!approvedLeaveTableInstance) {
+            initFilterControls('appr');
+            approvedLeaveTableInstance = $('#approvedLeaveTable').DataTable({
+                processing: true,
+                serverSide: true,
+                responsive: false,
+                autoWidth: false,
+                ajax: {
+                    url: "../../api/leave/fetch-forwarded.php",
+                    type: "POST",
+                    data: function(d) { Object.assign(d, buildPayload('appr'), { viewMode: 'approved' }); }
+                },
+                columns: [
+                    { data: "sl", orderable: false },
+                    { data: "applicant_info", orderable: true },
+                    { data: "application_date_time", orderable: true },
+                    { data: "requested_leave", orderable: true },
+                    { data: "proposed_leave", orderable: true },
+                    { data: "status", orderable: true },
+                    { data: "signatories", orderable: false, searchable: false },
+                    { data: "action", orderable: false, searchable: false }
+                ],
+                order: [[2, 'desc']],
+                createdRow: function(row) {
+                    var labels = ['ক্রমিক', 'আবেদনকারী', 'আবেদনের সময়', 'চাহিত ছুটি', 'প্রস্তাবিত ছুটি', 'স্টেটাস', 'স্বাক্ষরকারীগণ', 'কার্যাবলী'];
+                    var compact = [0, 5, 7];
+                    $(row).find('td').each(function(i){
+                        var $td = $(this);
+                        $td.attr('data-label', labels[i] || '');
+                        if ($.trim($td.text()) === '' && $td.children().length === 0) $td.addClass('is-empty');
+                        if (compact.indexOf(i) !== -1) $td.addClass('compact-cell');
+                    });
+                },
+                pageLength: 10,
+                lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "সকল"]],
+                language: dtLang
+            });
+        }
+    });
+
+    // Returned-to-admin (পুনঃ যাচাই) DataTable — lazy load; reload on re-open.
+    var returnedToAdminLang = Object.assign({}, dtLang, {
+        emptyTable: '<div class="empty-state-rich"><i class="ti tabler-corner-up-left"></i><div class="empty-title">কোনো পুনঃ যাচাই নেই</div><div class="empty-subtitle">এই মুহূর্তে সিদ্ধান্তকারীগণ থেকে ফেরত আসা কোনো আবেদন নেই</div></div>'
+    });
+    $('button[data-bs-target="#returnedToAdmin"]').on('shown.bs.tab', function () {
+        if (!returnedToAdminTableInstance) {
+            returnedToAdminTableInstance = $('#returnedToAdminTable').DataTable({
+                processing: true,
+                serverSide: true,
+                responsive: false,
+                autoWidth: false,
+                ajax: {
+                    url:  '../../api/leave/fetch-returned-to-admin.php',
+                    type: 'POST'
+                },
+                columns: [
+                    { data: 'serial',         orderable: false },
+                    { data: 'applicant_cell', orderable: false },
+                    { data: 'requested',      orderable: false },
+                    { data: 'returned_by',    orderable: false },
+                    { data: 'note',           orderable: false },
+                    { data: 'status',         orderable: false },
+                    { data: 'action',         orderable: false, searchable: false, className: 'text-center' }
+                ],
+                order: [],
+                createdRow: function(row) {
+                    var labels = ['ক্রমিক','আবেদনকারী','চাহিত ছুটি','ফেরত পাঠিয়েছেন','ফেরতের কারণ','বর্তমান অবস্থা','কার্যাবলী'];
+                    $(row).find('td').each(function(i){ $(this).attr('data-label', labels[i] || ''); });
+                },
+                pageLength: 10,
+                lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "সকল"]],
+                language: returnedToAdminLang
+            });
+        } else {
+            returnedToAdminTableInstance.ajax.reload(null, false);
         }
     });
 

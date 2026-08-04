@@ -17,6 +17,11 @@ function dateDiffInDays($date1, $date2)
       return abs(round($diff / 86400));
   }
 
+// Hoisted existence check for the lazily-created return-history table.
+$hasReturnHistory = false;
+$_rrChk = mysqli_query($con, "SHOW TABLES LIKE 'leave_return_history'");
+if ($_rrChk && mysqli_num_rows($_rrChk) > 0) $hasReturnHistory = true;
+
 // Resolve organization_id for the current user
 if (!empty($_SESSION['isCenterAdmin']) && !empty($_SESSION['centerAdminOrgID'])) {
     $orgID = intval($_SESSION['centerAdminOrgID']);
@@ -240,7 +245,19 @@ if ($getLeaveApplicationDetailsQRW['status'] == 1) {
     $status = '';
 }
 
-
+// Has this application ever been returned via ফেরত পাঠান? Hoisted before
+// the actions HTML because the "ফেরতকৃত আবেদন" label below depends on it,
+// and further reused for the applicant-cell "পুনঃ যাচাইয়ের পর জমা" chip.
+$_wasReturned = false;
+if ($hasReturnHistory) {
+    $_lid = (int)($getLeaveApplicationDetailsQRW['dataID'] ?? 0);
+    if ($_lid > 0) {
+        $_rrq = mysqli_query($con, "SELECT COUNT(*) c FROM leave_return_history WHERE leaveApplicationID = $_lid");
+        if ($_rrq && (int)(mysqli_fetch_assoc($_rrq)['c'] ?? 0) > 0) {
+            $_wasReturned = true;
+        }
+    }
+}
 
 $html = '
 <div class="btn-group">
@@ -249,7 +266,7 @@ $html = '
     </button>
     <ul class="dropdown-menu dropdown-menu-end shadow-sm">
         <li><a class="dropdown-item" target="_blank" href="../../views/leave/application-details.php?menuslug=allowed-leave-applications&leaveApplicationID=' . $row['leaveApplicationID'] . '">
-            <i class="ti tabler-file-text me-2"></i>আবেদনপত্র
+            <i class="ti ' . ($_wasReturned ? 'tabler-file-alert' : 'tabler-file-text') . ' me-2"></i>' . ($_wasReturned ? 'ফেরতকৃত আবেদন' : 'আবেদনপত্র') . '
         </a></li>
 
         ' . ($getLeaveApplicationDetailsQRW['attachment'] != '' ?
@@ -312,12 +329,19 @@ $html = '
         $avatarHtml_ = '<div class="emp-avatar"><span class="emp-avatar-fallback">' . htmlspecialchars($initials_) . '</span></div>';
     }
     $secOrg_ = trim(($getSectionDetailsQRW['section_name'] ?? '') . (!empty($orgName) ? ' • ' . $orgName : ''));
+
+    // Resubmit-after-return chip — reuses $_wasReturned flag hoisted above.
+    $_resubmitChip = $_wasReturned
+        ? '<div class="mt-1"><span style="display:inline-block;background:#fff3e1;color:#b8651a;font-size:0.68rem;padding:2px 8px;border-radius:999px;border:1px solid #f0d9a8;line-height:1.3;"><i class="ti tabler-refresh me-1"></i>পুনঃ যাচাইয়ের পর জমা</span></div>'
+        : '';
+
     $applicant_info = '<div class="emp-cell">' . $avatarHtml_
                     . '<div class="emp-meta">'
                     . '<div class="appno-chip"><i class="ti tabler-hash"></i> ' . htmlspecialchars($appNoVal) . '</div>'
                     . '<div class="emp-name">' . htmlspecialchars($empName_) . ($empCode_ ? ' <span class="emp-sub-light">(' . banglaNumber($empCode_) . ')</span>' : '') . '</div>'
                     . ($empJob_ ? '<div class="emp-sub">' . htmlspecialchars($empJob_) . '</div>' : '')
                     . ($secOrg_ ? '<div class="emp-sub-light">' . htmlspecialchars($secOrg_) . '</div>' : '')
+                    . $_resubmitChip
                     . '</div></div>';
 
     // ── Multi-segment override for both চাহিত and প্রস্তাবিত ──

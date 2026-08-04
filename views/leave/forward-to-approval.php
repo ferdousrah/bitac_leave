@@ -188,6 +188,54 @@ mysqli_stmt_execute($returnStmtF);
 $returnHistory = mysqli_fetch_all(mysqli_stmt_get_result($returnStmtF), MYSQLI_ASSOC);
 mysqli_stmt_close($returnStmtF);
 
+// Resubmission events — each time the applicant edited-and-resubmitted after
+// a পুনঃ যাচাই. Sourced from audit_log (action='leave_application_resubmitted').
+$resubmitHistory = [];
+// Approval timestamps — leave_data_for_approval.approvedDate is DATE-precision
+// (00:00:00), so a supervisor who approved at 19:09 the SAME day as an
+// earlier 17:13 return sorts BEFORE the return. audit_log carries the full
+// datetime for each approval action; we key by (target_id, actor name) so
+// events land in true chronological order.
+$approvalAuditTs = []; // key = actor_name → latest audit createdAt for approval actions
+
+$_alChk = mysqli_query($con, "SHOW TABLES LIKE 'audit_log'");
+if ($_alChk && mysqli_num_rows($_alChk) > 0) {
+    $resStmt = mysqli_prepare($con,
+        "SELECT actor_user_id, actor_name, note, createdAt
+         FROM audit_log
+         WHERE action = 'leave_application_resubmitted'
+           AND target_type = 'leave_application'
+           AND target_id = ?
+         ORDER BY createdAt ASC, dataID ASC");
+    if ($resStmt) {
+        mysqli_stmt_bind_param($resStmt, 'i', $leaveApplicationID);
+        mysqli_stmt_execute($resStmt);
+        $resubmitHistory = mysqli_fetch_all(mysqli_stmt_get_result($resStmt), MYSQLI_ASSOC);
+        mysqli_stmt_close($resStmt);
+    }
+
+    // Pull approval-action audit rows (recommend, chain-approve, final-approve)
+    // for this application; take the MOST RECENT per actor so if someone acted
+    // multiple times the latest timestamp is used.
+    $apvStmt = mysqli_prepare($con,
+        "SELECT actor_name, createdAt
+         FROM audit_log
+         WHERE target_type = 'leave_application'
+           AND target_id = ?
+           AND action IN ('leave_recommended', 'leave_chain_approved', 'leave_approved')
+         ORDER BY createdAt ASC, dataID ASC");
+    if ($apvStmt) {
+        mysqli_stmt_bind_param($apvStmt, 'i', $leaveApplicationID);
+        mysqli_stmt_execute($apvStmt);
+        $apvRes = mysqli_stmt_get_result($apvStmt);
+        while ($ar = mysqli_fetch_assoc($apvRes)) {
+            $_n = trim($ar['actor_name'] ?? '');
+            if ($_n !== '') $approvalAuditTs[$_n] = strtotime($ar['createdAt']);
+        }
+        mysqli_stmt_close($apvStmt);
+    }
+}
+
 // Admin note history (if the app has been forwarded and returned before)
 $adminNoteHistory = [];
 $adminNoteChk = mysqli_query($con, "SHOW TABLES LIKE 'leave_admin_note_history'");
@@ -222,10 +270,12 @@ $threadEvents[] = [
 // 2) Supervisor's recommendation
 foreach ($sigHistory as $sig) {
     if ((int)$sig['isSupervisor'] !== 1) continue;
+    $_sigName = $sig['employee_name'] ?? '';
+    $_ts = $approvalAuditTs[$_sigName] ?? (!empty($sig['approvedDate']) ? strtotime($sig['approvedDate']) : 0);
     $threadEvents[] = [
-        'ts'    => !empty($sig['approvedDate']) ? strtotime($sig['approvedDate']) : 0,
+        'ts'    => $_ts,
         'order' => 1,
-        'name'  => $sig['employee_name'] ?? '',
+        'name'  => $_sigName,
         'title' => $sig['job_title_name'] ?? '',
         'badge' => ['বিভাগীয় প্রধান', '#d1f4ff', '#0883a3'],
         'color' => '#0dcaf0',
@@ -253,10 +303,12 @@ if (!empty($adminNoteHistory)) {
 // 4) Non-supervisor signatories who already approved (rare at forward stage but supports re-forward after return)
 foreach ($sigHistory as $sig) {
     if ((int)$sig['isSupervisor'] === 1) continue;
+    $_sigName = $sig['employee_name'] ?? '';
+    $_ts = $approvalAuditTs[$_sigName] ?? (!empty($sig['approvedDate']) ? strtotime($sig['approvedDate']) : 0);
     $threadEvents[] = [
-        'ts'    => !empty($sig['approvedDate']) ? strtotime($sig['approvedDate']) : 0,
+        'ts'    => $_ts,
         'order' => 3,
-        'name'  => $sig['employee_name'] ?? '',
+        'name'  => $_sigName,
         'title' => $sig['job_title_name'] ?? '',
         'badge' => ['অনুমোদনকারী', '#d8f5e3', '#1a7e44'],
         'color' => '#28c76f',
@@ -281,6 +333,22 @@ foreach ($returnHistory as $rh) {
         'icon'  => 'tabler-corner-up-left',
         'extra' => !empty($rh['returnedToName']) ? '→ ' . htmlspecialchars($rh['returnedToName']) : '',
         'body'  => !empty(trim($rh['note'] ?? '')) ? nl2br(htmlspecialchars($rh['note'])) : '<em class="text-muted">কোনো কারণ লেখা হয়নি</em>',
+    ];
+}
+
+// 6) Resubmission events — applicant edited + resent after পুনঃ যাচাই.
+// Sourced from audit_log; body is a friendly description because the
+// audit row's `note` is just an internal marker (e.g. "segments=1").
+foreach ($resubmitHistory as $rs) {
+    $threadEvents[] = [
+        'ts'    => !empty($rs['createdAt']) ? strtotime($rs['createdAt']) : 0,
+        'order' => 5,
+        'name'  => $rs['actor_name'] ?? ($emp['employee_name'] ?? 'আবেদনকারী'),
+        'title' => trim(($emp['job_title_name'] ?? '') . (!empty($emp['section_name']) ? ', ' . $emp['section_name'] : '')),
+        'badge' => ['পুনঃ যাচাইয়ের পর জমা', '#e0f3ff', '#0d63a3'],
+        'color' => '#3aa1e0',
+        'icon'  => 'tabler-refresh',
+        'body'  => 'আবেদনটি সংশোধন করে পুনরায় জমা দেওয়া হয়েছে।',
     ];
 }
 
@@ -834,6 +902,53 @@ include(__DIR__ . '/../../includes/applicant_balance_modal.php');
                 <span class="ti-tile"><i class="ti tabler-copy"></i></span>
                 অনুলিপি
             </h6>
+            <?php
+                // Three fixed labels that every office notice must carry.
+                // Rendered read-only above the editable table so the admin
+                // can see they will appear on the notice, then add real
+                // employee entries below. Not stored in leave_notice_copy —
+                // the office-notice generator prepends them at render time
+                // from these same strings, keeping this a UI-only convention.
+                //
+                // Center is sourced from `leave_applications.organization_id`
+                // (via $orgData) rather than the applicant's current employee
+                // record — otherwise a later transfer would silently rewrite
+                // the center on old office notices.
+                $_defaultCopies = [
+                    'প্রশাসন বিভাগ, বিটাক, ' . ($orgData['organization_name'] ?? '—'),
+                    'ব্যক্তিগত নথির কপি',
+                    'অফিস কপি',
+                ];
+            ?>
+            <div class="table-responsive mb-2">
+                <table class="table table-bordered mb-0" id="copyToDefaultsTable">
+                    <thead>
+                        <tr>
+                            <th width="80" class="text-center">ক্রমিক</th>
+                            <th>নির্ধারিত অনুলিপি প্রাপক</th>
+                            <th width="120" class="text-center">অনুক্রম</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($_defaultCopies as $_ci => $_cLabel): ?>
+                        <tr style="background:#f7f6ff;">
+                            <td class="text-center row-serial"><?= $_ci + 1 ?></td>
+                            <td>
+                                <span class="d-inline-flex align-items-center gap-2">
+                                    <i class="ti tabler-pin text-primary"></i>
+                                    <?= htmlspecialchars($_cLabel) ?>
+                                </span>
+                                <span class="badge bg-label-secondary ms-2" style="font-size:0.65rem;">নির্ধারিত</span>
+                            </td>
+                            <td class="text-center text-muted">—</td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <div class="text-muted small mb-2" style="font-size:0.78rem;">
+                <i class="ti tabler-info-circle me-1"></i>উপরের ৩টি অনুলিপি অফিস আদেশে স্বয়ংক্রিয়ভাবে যুক্ত হবে। নিচে অতিরিক্ত কর্মকর্তা যোগ করুন।
+            </div>
             <div class="table-responsive mb-3">
                 <table class="table table-bordered" id="copyToTable">
                     <thead>

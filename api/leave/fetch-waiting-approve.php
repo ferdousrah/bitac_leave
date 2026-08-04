@@ -38,6 +38,11 @@ $getUserInfoQ = mysqli_query($con, "SELECT * FROM user_list WHERE user_id='$user
 $getUserInfo = mysqli_fetch_assoc($getUserInfoQ);
 $employee_id = mysqli_real_escape_string($con, $getUserInfo['employee_id']);
 
+// Hoisted existence check for the lazily-created return-history table.
+$hasReturnHistory = false;
+$_rrChk = mysqli_query($con, "SHOW TABLES LIKE 'leave_return_history'");
+if ($_rrChk && mysqli_num_rows($_rrChk) > 0) $hasReturnHistory = true;
+
 $request = $_REQUEST;
 
 // Frontend column order: 0=row_check, 1=serial(dataID), 2=applicant, 3=section/center, 4=requested(dateFrom), 5=proposed(approvedDateFrom), 6=action
@@ -69,13 +74,17 @@ if ($dateFrom !== '' && $dateTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $d
 }
 
 // Base query
+// Exclude status=3 (পুনঃ যাচাই — sent back to applicant/admin). Chain rows
+// keep isApproved=0 across returns, so without this filter a returned app
+// would reappear in the signatory queue before it's actually resubmitted.
 $sql_base = "FROM leave_data_for_approval
     INNER JOIN leave_applications ON leave_data_for_approval.leaveApplicationID = leave_applications.dataID
     INNER JOIN employee_list ON leave_applications.applicantID = employee_list.id
     WHERE leave_data_for_approval.signatory = '$employee_id'
     AND leave_data_for_approval.isSentbyAdmin = 1
     AND leave_data_for_approval.isSupervisor != 1
-    AND leave_data_for_approval.isApproved = 0$filterSql";
+    AND leave_data_for_approval.isApproved = 0
+    AND leave_applications.status <> 3$filterSql";
 
 // Count total records
 $totalData = mysqli_num_rows(mysqli_query($con, "SELECT leave_data_for_approval.dataID $sql_base"));
@@ -98,7 +107,8 @@ $start = intval($request['start']);
 $length = intval($request['length']);
 $columnIndex = intval($request['order'][0]['column']);
 $sortColumn = $columns[$columnIndex];
-$sortDir = $request['order'][0]['dir'] === 'desc' ? 'DESC' : 'ASC';
+// Default DESC (newest first). See fetch-waiting-supervise.php for rationale.
+$sortDir = (isset($request['order'][0]['dir']) && strtolower($request['order'][0]['dir']) === 'asc') ? 'ASC' : 'DESC';
 
 $sql = "SELECT
     leave_data_for_approval.dataID AS approvalDataID,
@@ -178,9 +188,49 @@ while ($row = mysqli_fetch_assoc($query)) {
         } else {
             $avatarHtml = '<div class="emp-avatar"><span class="emp-avatar-fallback">' . htmlspecialchars($initials) . '</span></div>';
         }
+
+        // Return-context chip. Two very different situations can put a row
+        // into a signatory's অনুমোদন queue via a return:
+        //   * to_applicant   → applicant fixed and resubmitted
+        //   * to_previous_signatory → a higher signatory sent it BACK to me
+        //     for re-verification (I need to re-review my earlier decision)
+        //   * to_admin       → signatory bounced to admin, admin re-forwarded
+        // The chip text/color needs to say which, otherwise it looks like a
+        // plain resubmit even when a senior demanded re-verification.
+        $_resubmitChip = '';
+        if ($hasReturnHistory) {
+            $_lid = (int)$row['applicationID'];
+            $_rrq = mysqli_query($con,
+                "SELECT returnType, returnedByName
+                 FROM leave_return_history
+                 WHERE leaveApplicationID = $_lid
+                 ORDER BY dataID DESC LIMIT 1");
+            if ($_rrq && $_rrRow = mysqli_fetch_assoc($_rrq)) {
+                $_rt = $_rrRow['returnType'] ?? '';
+                $_by = trim($_rrRow['returnedByName'] ?? '');
+                if ($_rt === 'to_previous_signatory') {
+                    $_chipTxt = 'উর্ধ্বতন সিদ্ধান্তকারী কর্তৃক পুনঃ যাচাইয়ের জন্য ফেরত'
+                              . ($_by !== '' ? ' — ' . htmlspecialchars($_by) : '');
+                    $_chipBg = '#fce8e6'; $_chipFg = '#a52a2a'; $_chipBd = '#f5c5c1';
+                    $_chipIcon = 'tabler-arrow-back-up';
+                } elseif ($_rt === 'to_admin') {
+                    $_chipTxt = 'প্রশাসনিক ডেস্ক থেকে পুনঃ ফরওয়ার্ড';
+                    $_chipBg = '#e5f0ff'; $_chipFg = '#1c4d94'; $_chipBd = '#c9dbf6';
+                    $_chipIcon = 'tabler-share';
+                } else {
+                    // to_applicant (default)
+                    $_chipTxt = 'পুনঃ যাচাইয়ের পর জমা';
+                    $_chipBg = '#fff3e1'; $_chipFg = '#b8651a'; $_chipBd = '#f0d9a8';
+                    $_chipIcon = 'tabler-refresh';
+                }
+                $_resubmitChip = '<div class="mt-1"><span style="display:inline-block;background:' . $_chipBg . ';color:' . $_chipFg . ';font-size:0.68rem;padding:2px 8px;border-radius:999px;border:1px solid ' . $_chipBd . ';line-height:1.3;"><i class="ti ' . $_chipIcon . ' me-1"></i>' . $_chipTxt . '</span></div>';
+            }
+        }
+
         $applicantCell = '<div class="emp-cell">' . $avatarHtml
                        . '<div class="emp-meta"><div class="emp-name">' . htmlspecialchars($empName) . ($empCode ? ' <span class="emp-sub-light">(' . banglaNumber($empCode) . ')</span>' : '') . '</div>'
                        . ($empJob ? '<div class="emp-sub">' . htmlspecialchars($empJob) . '</div>' : '')
+                       . $_resubmitChip
                        . '</div></div>';
 
         // Section + center chips

@@ -30,7 +30,15 @@ $superviseCount = 0;
 $approveCount   = 0;
 $returnedCount  = 0;
 if ($signatoryEmpId) {
-    $_s = mysqli_prepare($con, "SELECT COUNT(*) AS c FROM leave_data_for_approval WHERE signatory = ? AND isSupervisor = 1 AND isApproved = 0");
+    // Exclude returned apps (la.status = 3) — while sitting on the applicant's
+    // desk they must not inflate the supervisor's pending count. See the
+    // matching filter in fetch-waiting-supervise.php.
+    $_s = mysqli_prepare($con,
+        "SELECT COUNT(*) AS c
+         FROM leave_data_for_approval ldfa
+         INNER JOIN leave_applications la ON ldfa.leaveApplicationID = la.dataID
+         WHERE ldfa.signatory = ? AND ldfa.isSupervisor = 1 AND ldfa.isApproved = 0
+           AND la.status <> 3");
     mysqli_stmt_bind_param($_s, 's', $signatoryEmpId);
     mysqli_stmt_execute($_s);
     $superviseCount = (int)(mysqli_fetch_assoc(mysqli_stmt_get_result($_s))['c'] ?? 0);
@@ -43,10 +51,12 @@ if ($signatoryEmpId) {
     $_s = mysqli_prepare($con,
         "SELECT COUNT(*) AS c
          FROM leave_data_for_approval ldfa
+         INNER JOIN leave_applications la ON ldfa.leaveApplicationID = la.dataID
          WHERE ldfa.signatory = ?
            AND ldfa.isSupervisor = 0
            AND ldfa.isApproved   = 0
            AND ldfa.isSentbyAdmin = 1
+           AND la.status <> 3
            AND (
              ldfa.prevSignatory = 0
              OR EXISTS (
@@ -67,7 +77,43 @@ if ($signatoryEmpId) {
     // the query with a table-exists check to avoid a fatal on first-boot.
     $_tblCheck = mysqli_query($con, "SHOW TABLES LIKE 'leave_return_history'");
     if ($_tblCheck && mysqli_num_rows($_tblCheck) > 0) {
-        $_s = mysqli_prepare($con, "SELECT COUNT(*) c FROM leave_return_history WHERE returnedBy = ?");
+        // Mirror the visible filter in fetch-returned-by-me.php — exclude
+        // entries the returner no longer needs to track. Entry is hidden
+        // only when the returner's own row is currently ACTIONABLE (prev
+        // sig already re-approved, admin forwarded) OR they have already
+        // re-acted after the return.
+        $_s = mysqli_prepare($con,
+            "SELECT COUNT(*) c
+             FROM leave_return_history lrh
+             WHERE lrh.returnedBy = ?
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM leave_data_for_approval ldfa
+                   INNER JOIN leave_applications app2 ON ldfa.leaveApplicationID = app2.dataID
+                   WHERE ldfa.leaveApplicationID = lrh.leaveApplicationID
+                     AND ldfa.signatory      = lrh.returnedBy
+                     AND (
+                         (ldfa.isApproved = 0
+                          AND (ldfa.isSupervisor = 1 OR ldfa.isSentbyAdmin = 1)
+                          AND app2.status <> 3
+                          AND (
+                              ldfa.isSupervisor = 1
+                              OR ldfa.prevSignatory = 0
+                              OR ldfa.prevSignatory IS NULL
+                              OR EXISTS (
+                                  SELECT 1 FROM leave_data_for_approval prev
+                                  WHERE prev.leaveApplicationID = ldfa.leaveApplicationID
+                                    AND prev.signatory = ldfa.prevSignatory
+                                    AND prev.isApproved = 1
+                                    AND prev.serial    = ldfa.serial - 1
+                              )
+                          ))
+                         OR
+                         (ldfa.isApproved = 1
+                          AND ldfa.approvedDate IS NOT NULL
+                          AND ldfa.approvedDate >= DATE(lrh.createdAt))
+                     )
+               )");
         mysqli_stmt_bind_param($_s, 's', $signatoryEmpId);
         mysqli_stmt_execute($_s);
         $returnedCount = (int)(mysqli_fetch_assoc(mysqli_stmt_get_result($_s))['c'] ?? 0);
@@ -523,6 +569,10 @@ $(document).ready(function() {
             data: function(d) { Object.assign(d, buildFilterPayload('supervise')); }
         },
         columns: dtColumns,
+        // Newest first — DataTables' default ASC pushed the latest application
+        // to the bottom; force column 1 (serial/dataID) DESC so the most recent
+        // arrivals are at the top of the reviewer's queue.
+        order: [[1, 'desc']],
         createdRow: function(row) { decorateRow(row); },
         pageLength: 10,
         lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "সকল"]],
@@ -703,6 +753,7 @@ $(document).ready(function() {
                     data: function(d) { Object.assign(d, buildFilterPayload('approve')); }
                 },
                 columns: dtColumns,
+                order: [[1, 'desc']],
                 createdRow: function(row) { decorateRow(row); },
                 pageLength: 10,
                 lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "সকল"]],

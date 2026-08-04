@@ -348,45 +348,6 @@ function generatePDFData($leaveApplicationID) {
             }
         }
 
-        // ── Return history callout ──────────────────────────────────
-        // Sits right after the application body (before signatures) so
-        // the reader has read the letter first and then sees why it
-        // was sent back. Rendered as a table with plain (non-bold) text
-        // because mPDF + Bangla fonts silently drop <strong>/<b> tags.
-        $_rhCheck = $con->query("SHOW TABLES LIKE 'leave_return_history'");
-        if ($_rhCheck && $_rhCheck->num_rows > 0) {
-            $_rh = $con->query(
-                "SELECT returnedByName, returnedByTitle, note, createdAt
-                 FROM leave_return_history
-                 WHERE leaveApplicationID = " . (int)$leaveApplicationID . "
-                 ORDER BY dataID DESC LIMIT 1");
-            if ($_rh && $_rhRow = $_rh->fetch_assoc()) {
-                $_rBy    = trim($_rhRow['returnedByName']  ?? '');
-                $_rTitle = trim($_rhRow['returnedByTitle'] ?? '');
-                $_rNote  = trim($_rhRow['note']            ?? '');
-                $_rWhen  = !empty($_rhRow['createdAt'])
-                    ? banglaNumber(date('d/m/Y', strtotime($_rhRow['createdAt'])))
-                    : '';
-                $_headerLine = 'পুনঃ যাচাই — ফেরত প্রেরণ';
-                $_bodyLine = 'এই আবেদনটি '
-                    . ($_rBy !== ''    ? htmlspecialchars($_rBy) : 'সংশ্লিষ্ট কর্তৃপক্ষ')
-                    . ($_rTitle !== '' ? ' (' . htmlspecialchars($_rTitle) . ')' : '')
-                    . ' কর্তৃক'
-                    . ($_rWhen !== ''  ? ' ' . $_rWhen . ' তারিখে' : '')
-                    . ' সংশোধনের জন্য ফেরত পাঠানো হয়েছিল।';
-                $_noteLine = ($_rNote !== '') ? '<br>কারণ: ' . nl2br(htmlspecialchars($_rNote)) : '';
-                $html .= '<p>&nbsp;</p>'
-                       . '<table cellpadding="8" cellspacing="0" style="width:100%;border:1px solid #d4a056;background:#fff8e6;margin-bottom:8px;">'
-                       . '<tr><td style="color:#8b5a1a;font-size:13px;line-height:1.4;border-bottom:1px solid #f0d9a8;">'
-                       . $_headerLine
-                       . '</td></tr>'
-                       . '<tr><td style="color:#5d3f1c;font-size:12px;line-height:1.6;">'
-                       . $_bodyLine
-                       . $_noteLine
-                       . '</td></tr></table>';
-            }
-        }
-
         $html .= '<p>&nbsp;</p>';
 
         // Applicant signature
@@ -489,7 +450,80 @@ function generatePDFData($leaveApplicationID) {
         }
         
         $html .= '</td></tr></table>';
-        
+
+        // ── Return history callout ──────────────────────────────────
+        // Rendered below the signatures so the letter + signatories
+        // read cleanly first and the ফেরত note appears as a footer.
+        // Table markup + color-only emphasis because mPDF + Bangla
+        // fonts silently drop <strong>/<b> tags.
+        $_rhCheck = $con->query("SHOW TABLES LIKE 'leave_return_history'");
+        if ($_rhCheck && $_rhCheck->num_rows > 0) {
+            // Every return event in chronological order — same application
+            // can be sent back multiple times (supervisor → applicant,
+            // signatory → previous signatory, etc.), and each event needs
+            // to be visible so the reader can trace the full ফেরত history.
+            $_rh = $con->query(
+                "SELECT returnedByName, returnedByTitle, returnType,
+                        returnedToName, note, createdAt
+                 FROM leave_return_history
+                 WHERE leaveApplicationID = " . (int)$leaveApplicationID . "
+                 ORDER BY createdAt ASC, dataID ASC");
+            $_rhRows = [];
+            while ($_rh && $_row = $_rh->fetch_assoc()) $_rhRows[] = $_row;
+
+            if (!empty($_rhRows)) {
+                $_multi = count($_rhRows) > 1;
+                $_headerLine = $_multi
+                    ? 'পুনঃ যাচাই — ফেরত প্রেরণ (' . banglaNumber(count($_rhRows)) . ' বার)'
+                    : 'পুনঃ যাচাই — ফেরত প্রেরণ';
+                $_typeLabels = [
+                    'to_applicant'          => 'আবেদনকারী',
+                    'to_previous_signatory' => 'পূর্ববর্তী সিদ্ধান্তকারী',
+                    'to_admin'              => 'প্রশাসনিক ডেস্ক',
+                ];
+
+                $html .= '<p>&nbsp;</p>'
+                       . '<table cellpadding="8" cellspacing="0" style="width:100%;border:1px solid #d4a056;background:#fff8e6;margin-top:12px;">'
+                       . '<tr><td style="color:#8b5a1a;font-size:13px;line-height:1.4;border-bottom:1px solid #f0d9a8;">'
+                       . $_headerLine
+                       . '</td></tr>';
+
+                foreach ($_rhRows as $_i => $_rhRow) {
+                    $_rBy    = trim($_rhRow['returnedByName']  ?? '');
+                    $_rTitle = trim($_rhRow['returnedByTitle'] ?? '');
+                    $_rNote  = trim($_rhRow['note']            ?? '');
+                    $_rWhen  = !empty($_rhRow['createdAt'])
+                        ? banglaNumber(date('d/m/Y', strtotime($_rhRow['createdAt'])))
+                        : '';
+                    $_rType  = $_rhRow['returnType'] ?? '';
+                    $_rToLbl = $_typeLabels[$_rType] ?? '';
+                    $_rToNm  = trim($_rhRow['returnedToName'] ?? '');
+                    $_target = $_rToLbl !== ''
+                        ? ($_rToLbl . ($_rToNm !== '' && $_rToNm !== $_rToLbl ? ' (' . htmlspecialchars($_rToNm) . ')' : ''))
+                        : ($_rToNm !== '' ? htmlspecialchars($_rToNm) : '');
+
+                    $_bodyLine = ($_multi ? banglaNumber($_i + 1) . '। ' : '')
+                        . 'এই আবেদনটি '
+                        . ($_rBy !== ''    ? htmlspecialchars($_rBy) : 'সংশ্লিষ্ট কর্তৃপক্ষ')
+                        . ($_rTitle !== '' ? ' (' . htmlspecialchars($_rTitle) . ')' : '')
+                        . ' কর্তৃক'
+                        . ($_rWhen !== ''  ? ' ' . $_rWhen . ' তারিখে' : '')
+                        . ($_target !== '' ? ' ' . $_target . '-এর কাছে' : '')
+                        . ' সংশোধনের জন্য ফেরত পাঠানো হয়েছিল।';
+                    $_noteLine = ($_rNote !== '') ? '<br>কারণ: ' . nl2br(htmlspecialchars($_rNote)) : '';
+
+                    $_lastRow = ($_i === count($_rhRows) - 1);
+                    $html .= '<tr><td style="color:#5d3f1c;font-size:12px;line-height:1.6;'
+                          .  ($_lastRow ? '' : 'border-bottom:1px dashed #f0d9a8;')
+                          .  '">'
+                          .  $_bodyLine
+                          .  $_noteLine
+                          .  '</td></tr>';
+                }
+                $html .= '</table>';
+            }
+        }
+
         // Create PDF in memory
         $mpdf = new \Mpdf\Mpdf([
             'mode' => 'utf-8',

@@ -100,6 +100,53 @@ mysqli_stmt_execute($returnStmt);
 $returnHistory = mysqli_fetch_all(mysqli_stmt_get_result($returnStmt), MYSQLI_ASSOC);
 mysqli_stmt_close($returnStmt);
 
+// Resubmission history — every time the applicant edited-and-resubmitted
+// after a পুনঃ যাচাই. update-application.php logs this via audit_log
+// under action='leave_application_resubmitted', so we just read those.
+// Guarded by audit_log's existence.
+$resubmitHistory = [];
+// Approval timestamps — leave_data_for_approval.approvedDate is DATE-precision
+// (00:00:00), so a supervisor who approved AFTER a same-day return sorts
+// BEFORE the return by default. audit_log carries the full datetime for
+// each approval, keyed by actor name here so we can override the ts on
+// supervisor + signatory events below.
+$approvalAuditTs = [];
+
+$_alChk = mysqli_query($con, "SHOW TABLES LIKE 'audit_log'");
+if ($_alChk && mysqli_num_rows($_alChk) > 0) {
+    $resStmt = mysqli_prepare($con,
+        "SELECT actor_user_id, actor_name, note, createdAt
+         FROM audit_log
+         WHERE action = 'leave_application_resubmitted'
+           AND target_type = 'leave_application'
+           AND target_id = ?
+         ORDER BY createdAt ASC, dataID ASC");
+    if ($resStmt) {
+        mysqli_stmt_bind_param($resStmt, 'i', $leaveApplicationID);
+        mysqli_stmt_execute($resStmt);
+        $resubmitHistory = mysqli_fetch_all(mysqli_stmt_get_result($resStmt), MYSQLI_ASSOC);
+        mysqli_stmt_close($resStmt);
+    }
+
+    $apvStmt = mysqli_prepare($con,
+        "SELECT actor_name, createdAt
+         FROM audit_log
+         WHERE target_type = 'leave_application'
+           AND target_id = ?
+           AND action IN ('leave_recommended', 'leave_chain_approved', 'leave_approved')
+         ORDER BY createdAt ASC, dataID ASC");
+    if ($apvStmt) {
+        mysqli_stmt_bind_param($apvStmt, 'i', $leaveApplicationID);
+        mysqli_stmt_execute($apvStmt);
+        $apvRes = mysqli_stmt_get_result($apvStmt);
+        while ($ar = mysqli_fetch_assoc($apvRes)) {
+            $_n = trim($ar['actor_name'] ?? '');
+            if ($_n !== '') $approvalAuditTs[$_n] = strtotime($ar['createdAt']);
+        }
+        mysqli_stmt_close($apvStmt);
+    }
+}
+
 // ── Determine return target for the current signatory ────────────────
 // If supervisor → applicant; else look for previous APPROVED non-supervisor sig; else admin
 $returnTarget = null;
@@ -657,10 +704,12 @@ $threadEvents[] = [
 // 2) Supervisor's recommendation note (from leave_data_for_approval)
 foreach ($sigHistory as $sig) {
     if ((int)$sig['isSupervisor'] !== 1) continue;
+    $_sigName = $sig['employee_name'] ?? '';
+    $_ts = $approvalAuditTs[$_sigName] ?? (!empty($sig['approvedDate']) ? strtotime($sig['approvedDate']) : 0);
     $threadEvents[] = [
-        'ts'    => !empty($sig['approvedDate']) ? strtotime($sig['approvedDate']) : 0,
+        'ts'    => $_ts,
         'order' => 1,
-        'name'  => $sig['employee_name'] ?? '',
+        'name'  => $_sigName,
         'title' => $sig['job_title_name'] ?? '',
         'badge' => ['বিভাগীয় প্রধান', '#d1f4ff', '#0883a3'],
         'color' => '#0dcaf0',
@@ -701,10 +750,12 @@ if (!empty($adminNoteHistory)) {
 // 4) Each approved non-supervisor signatory
 foreach ($sigHistory as $sig) {
     if ((int)$sig['isSupervisor'] === 1) continue;
+    $_sigName = $sig['employee_name'] ?? '';
+    $_ts = $approvalAuditTs[$_sigName] ?? (!empty($sig['approvedDate']) ? strtotime($sig['approvedDate']) : 0);
     $threadEvents[] = [
-        'ts'    => !empty($sig['approvedDate']) ? strtotime($sig['approvedDate']) : 0,
+        'ts'    => $_ts,
         'order' => 3,
-        'name'  => $sig['employee_name'] ?? '',
+        'name'  => $_sigName,
         'title' => $sig['job_title_name'] ?? '',
         'badge' => ['অনুমোদনকারী', '#d8f5e3', '#1a7e44'],
         'color' => '#28c76f',
@@ -729,6 +780,24 @@ foreach ($returnHistory as $rh) {
         'icon'  => 'tabler-corner-up-left',
         'extra' => !empty($rh['returnedToName']) ? '→ ' . htmlspecialchars($rh['returnedToName']) : '',
         'body'  => !empty(trim($rh['note'] ?? '')) ? nl2br(htmlspecialchars($rh['note'])) : '<em class="text-muted">কোনো কারণ লেখা হয়নি</em>',
+    ];
+}
+
+// 6) Resubmission events — the applicant edited and resent after পুনঃ যাচাই.
+// Sourced from audit_log; the applicant's name comes from the audit row and
+// designation from the already-loaded employee record. `note` on the audit
+// row is "segments=N" (internal marker), not a user message, so we render a
+// friendly description instead.
+foreach ($resubmitHistory as $rs) {
+    $threadEvents[] = [
+        'ts'    => !empty($rs['createdAt']) ? strtotime($rs['createdAt']) : 0,
+        'order' => 5,
+        'name'  => $rs['actor_name'] ?? ($emp['employee_name'] ?? 'আবেদনকারী'),
+        'title' => trim(($emp['job_title_name'] ?? '') . (!empty($emp['section_name']) ? ', ' . $emp['section_name'] : '')),
+        'badge' => ['পুনঃ যাচাইয়ের পর জমা', '#e0f3ff', '#0d63a3'],
+        'color' => '#3aa1e0',
+        'icon'  => 'tabler-refresh',
+        'body'  => 'আবেদনটি সংশোধন করে পুনরায় জমা দেওয়া হয়েছে।',
     ];
 }
 

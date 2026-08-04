@@ -178,6 +178,8 @@ if ($myEmpID > 0) {
 // Mid-chain rows (isSupervisor=0 AND isSentbyAdmin=0) belong to a different
 // list, so we exclude them from THIS submenu's count.
 if ($myEmpID > 0) {
+    // Exclude status=3 (আবেদন applicant-এর কাছে ফেরত) so returned apps
+    // don't inflate the badge — they belong on the applicant's side.
     $q = mysqli_query($con, "
         SELECT COUNT(*) AS c
         FROM leave_data_for_approval la
@@ -185,6 +187,7 @@ if ($myEmpID > 0) {
         WHERE la.signatory = $myEmpID
           AND la.isApproved = 0
           AND (la.isSupervisor = 1 OR la.isSentbyAdmin = 1)
+          AND l.status <> 3
     ");
     $counts['leave-approval'] = (int)(mysqli_fetch_assoc($q)['c'] ?? 0);
 } else {

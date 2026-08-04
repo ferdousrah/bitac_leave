@@ -25,6 +25,11 @@ $sessionUserID = $_SESSION['userID'] ?? '';
 $getUserInfoQRW = pq_fetch_one($con, "SELECT * FROM user_list WHERE dataID = ?", 's', $sessionUserID);
 $sessionEmployeeId = $getUserInfoQRW['employee_id'] ?? '';
 
+// Hoisted existence check for the lazily-created return-history table.
+$hasReturnHistory = false;
+$_rrChk = mysqli_query($con, "SHOW TABLES LIKE 'leave_return_history'");
+if ($_rrChk && mysqli_num_rows($_rrChk) > 0) $hasReturnHistory = true;
+
 // DataTables server-side parameters
 $draw         = isset($_POST['draw'])   ? intval($_POST['draw'])   : 1;
 $start        = isset($_POST['start'])  ? max(0, intval($_POST['start']))  : 0;
@@ -170,10 +175,31 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
     } else {
         $avatarHtml = '<div class="emp-avatar"><span class="emp-avatar-fallback">' . htmlspecialchars($initials) . '</span></div>';
     }
+    // Detect whether this application has ever been sent back for পুনঃ যাচাই.
+    // Drives two decorations further down: the row chip (only for resubmitted
+    // rows, status != 3) and the "ফেরতকৃত আবেদন" label on the actions
+    // dropdown (for every row that carries return history).
+    $_wasReturned = false;
+    if ($hasReturnHistory) {
+        $_lid = (int)$row['dataID'];
+        $_rrCntQ = mysqli_query($con, "SELECT COUNT(*) c FROM leave_return_history WHERE leaveApplicationID = $_lid");
+        if ($_rrCntQ && (int)(mysqli_fetch_assoc($_rrCntQ)['c'] ?? 0) > 0) {
+            $_wasReturned = true;
+        }
+    }
+
+    // Chip: only for resubmitted rows (status != 3). Status=3 rows already
+    // get the amber pill + the full return-reason callout below.
+    $_resubmitChip = '';
+    if ($_wasReturned && (int)$row['status'] !== 3) {
+        $_resubmitChip = '<div class="mt-1"><span style="display:inline-block;background:#fff3e1;color:#b8651a;font-size:0.68rem;padding:2px 8px;border-radius:999px;border:1px solid #f0d9a8;line-height:1.3;"><i class="ti tabler-refresh me-1"></i>পুনঃ যাচাইয়ের পর জমা</span></div>';
+    }
+
     $employee_info = '<div class="emp-cell">' . $avatarHtml
                    . '<div class="emp-meta"><div class="emp-name">' . htmlspecialchars($empName) . '</div>'
                    . ($empJob ? '<div class="emp-sub">' . htmlspecialchars($empJob) . '</div>' : '')
                    . ($empSec ? '<div class="emp-sub-light">' . htmlspecialchars($empSec) . '</div>' : '')
+                   . $_resubmitChip
                    . '</div></div>';
 
     // Requested leave
@@ -456,8 +482,12 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
 
     // Actions — label the application-details link differently for
     // returned rows so the applicant knows this is the send-back copy.
-    $_appDocLabel = ((int)$row['status'] === 3) ? 'ফেরতকৃত আবেদন' : 'আবেদনপত্র';
-    $_appDocIcon  = ((int)$row['status'] === 3) ? 'tabler-file-alert' : 'tabler-file-text';
+    // Label the details link "ফেরতকৃত আবেদন" for any row that has ever
+    // been returned (not just the ones currently in status=3), so once
+    // the applicant resubmits they can still see this is the send-back
+    // copy — matches the "পুনঃ যাচাইয়ের পর জমা" chip on the row.
+    $_appDocLabel = $_wasReturned ? 'ফেরতকৃত আবেদন' : 'আবেদনপত্র';
+    $_appDocIcon  = $_wasReturned ? 'tabler-file-alert' : 'tabler-file-text';
     $actions = '<div class="btn-group">
         <button type="button" class="btn btn-icon btn-outline-primary btn-sm rounded-circle action-btn" data-bs-toggle="dropdown" aria-expanded="false" title="কার্যাবলী">
             <i class="ti tabler-dots-vertical"></i>

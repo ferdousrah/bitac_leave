@@ -6,6 +6,11 @@ require_once(LIBRARY_PATH . '/number_converter.php');
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
+// Hoisted existence check for the lazily-created return-history table.
+$hasReturnHistory = false;
+$_rrChk = mysqli_query($con, "SHOW TABLES LIKE 'leave_return_history'");
+if ($_rrChk && mysqli_num_rows($_rrChk) > 0) $hasReturnHistory = true;
+
 function dateDiffInDays($date1, $date2)
   {
       // Calculating the difference in timestamps
@@ -173,8 +178,21 @@ $orderColumn    = isset($_POST['order'][0]['column']) ? (int) $_POST['order'][0]
 $orderDirection = (isset($_POST['order'][0]['dir']) && $_POST['order'][0]['dir'] === 'asc') ? 'ASC' : 'DESC';
 $sortColumn     = $sortableColumns[$orderColumn] ?? 'leave_applications.submitDate';
 
+// viewMode splits the "সম্পাদিত" (forwarded) list into two tabs:
+//   'edited'   → forwarded but the final signatory chain hasn't approved yet
+//   'approved' → fully approved (leave_applications.status = 1)
+// Default preserves legacy behaviour (both together) so any older caller
+// still works.
+$viewMode = isset($_POST['viewMode']) ? trim($_POST['viewMode']) : '';
+$statusClause = '';
+if ($viewMode === 'edited') {
+    $statusClause = " AND leave_applications.status <> 1 ";
+} elseif ($viewMode === 'approved') {
+    $statusClause = " AND leave_applications.status = 1 ";
+}
+
 // SQL Query with JOIN to fetch employee data along with related information
-$sql = "select employee_list.employee_name as applicant_name, employee_list.employee_id, employee_list.designation, employee_list.section_id, employee_list.photo, leave_data_for_approval.leaveApplicationID, leave_data_for_approval.isSentbyAdmin from `leave_data_for_approval` inner join leave_applications on leave_data_for_approval.leaveApplicationID=leave_applications.dataID INNER JOIN employee_list on leave_applications.applicantID=employee_list.id where leave_data_for_approval.isSupervisor=1 and leave_data_for_approval.isApproved=1 and leave_applications.organization_id='$orgID' AND leave_data_for_approval.isSentbyAdmin = 1 $filterClause";
+$sql = "select employee_list.employee_name as applicant_name, employee_list.employee_id, employee_list.designation, employee_list.section_id, employee_list.photo, leave_data_for_approval.leaveApplicationID, leave_data_for_approval.isSentbyAdmin from `leave_data_for_approval` inner join leave_applications on leave_data_for_approval.leaveApplicationID=leave_applications.dataID INNER JOIN employee_list on leave_applications.applicantID=employee_list.id where leave_data_for_approval.isSupervisor=1 and leave_data_for_approval.isApproved=1 and leave_applications.organization_id='$orgID' AND leave_data_for_approval.isSentbyAdmin = 1 $statusClause $filterClause";
 
 // Apply search filter if available
 if ($search) {
@@ -200,7 +218,7 @@ mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 
 // Fetch total records count for pagination
-$totalRecordsQuery = mysqli_query($con, "select leave_data_for_approval.dataID from `leave_data_for_approval` inner join leave_applications on leave_data_for_approval.leaveApplicationID=leave_applications.dataID INNER JOIN employee_list on leave_applications.applicantID=employee_list.id where leave_data_for_approval.isSupervisor=1 and leave_data_for_approval.isApproved=1 and leave_applications.organization_id='$orgID' AND leave_data_for_approval.isSentbyAdmin = 1 $filterClause");
+$totalRecordsQuery = mysqli_query($con, "select leave_data_for_approval.dataID from `leave_data_for_approval` inner join leave_applications on leave_data_for_approval.leaveApplicationID=leave_applications.dataID INNER JOIN employee_list on leave_applications.applicantID=employee_list.id where leave_data_for_approval.isSupervisor=1 and leave_data_for_approval.isApproved=1 and leave_applications.organization_id='$orgID' AND leave_data_for_approval.isSentbyAdmin = 1 $statusClause $filterClause");
 $totalRecords = mysqli_num_rows($totalRecordsQuery);
 
 $data = [];
@@ -351,7 +369,19 @@ $editInfo = getEditStatusForLeave($con, (int)$row['leaveApplicationID']);
 $status  .= renderEditStatusBadge($editInfo);
 $hasPendingEdit = !empty($editInfo['pending']);
 
-
+// Has this application ever been returned via ফেরত পাঠান? Used both for
+// the actions-dropdown label ("ফেরতকৃত আবেদন") and the applicant-cell chip
+// further down. Hoisted here so the actions HTML built next can use it.
+$_wasReturned = false;
+if ($hasReturnHistory) {
+    $_lid = (int)($row['leaveApplicationID'] ?? ($getLeaveApplicationDetailsQRW['dataID'] ?? 0));
+    if ($_lid > 0) {
+        $_rrq = mysqli_query($con, "SELECT COUNT(*) c FROM leave_return_history WHERE leaveApplicationID = $_lid");
+        if ($_rrq && (int)(mysqli_fetch_assoc($_rrq)['c'] ?? 0) > 0) {
+            $_wasReturned = true;
+        }
+    }
+}
 
 $html = '
 <div class="btn-group">
@@ -360,7 +390,7 @@ $html = '
     </button>
     <ul class="dropdown-menu dropdown-menu-end shadow-sm">
         <li><a class="dropdown-item" target="_blank" href="../../views/leave/application-details.php?menuslug=allowed-leave-applications&leaveApplicationID=' . $row['leaveApplicationID'] . '">
-            <i class="ti tabler-file-text me-2"></i>আবেদনপত্র
+            <i class="ti ' . ($_wasReturned ? 'tabler-file-alert' : 'tabler-file-text') . ' me-2"></i>' . ($_wasReturned ? 'ফেরতকৃত আবেদন' : 'আবেদনপত্র') . '
         </a></li>
 
         ' . ($getLeaveApplicationDetailsQRW['attachment'] != '' ?
@@ -477,12 +507,20 @@ $html = '
         $avatarHtml_ = '<div class="emp-avatar"><span class="emp-avatar-fallback">' . htmlspecialchars($initials_) . '</span></div>';
     }
     $secOrg_ = trim(($getSectionDetailsQRW['section_name'] ?? '') . (!empty($orgName) ? ' • ' . $orgName : ''));
+
+    // Resubmit-after-return chip — reuse the $_wasReturned flag computed
+    // earlier in this row's iteration.
+    $_resubmitChip = $_wasReturned
+        ? '<div class="mt-1"><span style="display:inline-block;background:#fff3e1;color:#b8651a;font-size:0.68rem;padding:2px 8px;border-radius:999px;border:1px solid #f0d9a8;line-height:1.3;"><i class="ti tabler-refresh me-1"></i>পুনঃ যাচাইয়ের পর জমা</span></div>'
+        : '';
+
     $applicant_info = '<div class="emp-cell">' . $avatarHtml_
                     . '<div class="emp-meta">'
                     . '<div class="appno-chip"><i class="ti tabler-hash"></i> ' . htmlspecialchars($appNoVal) . '</div>'
                     . '<div class="emp-name">' . htmlspecialchars($empName_) . ($empCode_ ? ' <span class="emp-sub-light">(' . banglaNumber($empCode_) . ')</span>' : '') . '</div>'
                     . ($empJob_ ? '<div class="emp-sub">' . htmlspecialchars($empJob_) . '</div>' : '')
                     . ($secOrg_ ? '<div class="emp-sub-light">' . htmlspecialchars($secOrg_) . '</div>' : '')
+                    . $_resubmitChip
                     . '</div></div>';
 
     // Build signatory chain tracker

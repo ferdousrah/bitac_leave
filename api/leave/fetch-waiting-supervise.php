@@ -27,6 +27,12 @@ $sessionUsername = $_SESSION['username'] ?? '';
 $getUserInfoQRW = pq_fetch_one($con, "SELECT * FROM user_list WHERE user_id = ?", 's', $sessionUsername);
 $signatoryEmpId = $getUserInfoQRW['employee_id'] ?? '';
 
+// Return-history is a lazily-created table (see return-application.php).
+// Hoist the existence check once so per-row lookups can skip it.
+$hasReturnHistory = false;
+$_rrChk = mysqli_query($con, "SHOW TABLES LIKE 'leave_return_history'");
+if ($_rrChk && mysqli_num_rows($_rrChk) > 0) $hasReturnHistory = true;
+
 $request = $_REQUEST;
 
 // Column-index → DB column for ORDER BY
@@ -80,12 +86,19 @@ if ($dateFrom !== '' && $dateTo !== '') {
 }
 
 $baseSelect = "SELECT `leave_data_for_approval`.dataID, `leave_data_for_approval`.leaveApplicationID, `leave_data_for_approval`.signatory, `leave_data_for_approval`.isSupervisor, `leave_data_for_approval`.isSentbyAdmin, `leave_data_for_approval`.prevSignatory, `leave_data_for_approval`.isApproved, `leave_data_for_approval`.approvedDate, `leave_data_for_approval`.serial, `leave_data_for_approval`.approvedDays, `leave_applications`.applicantID, `leave_applications`.leaveType, `leave_applications`.dateFrom, `leave_applications`.dateTo, `leave_applications`.approvedDateFrom, `leave_applications`.approvedDateTo, `leave_applications`.leaveTypeInTwo, `leave_applications`.attachment, employee_list.employee_name as applicant_name, employee_list.photo as applicant_photo";
+// Exclude status=3 (পুনঃ যাচাই — sent back to applicant). return-application.php
+// resets isApproved=0 on the supervisor's row so the applicant edit-and-resubmit
+// path can restore it, but until the applicant actually resubmits (which flips
+// status back to 0), the app is sitting on the applicant's desk — not the
+// supervisor's. Without this filter, returned apps re-appear in the supervisor
+// queue immediately.
 $baseFrom = " FROM `leave_data_for_approval`
               INNER JOIN `leave_applications` ON `leave_data_for_approval`.leaveApplicationID=`leave_applications`.dataID
               INNER JOIN employee_list ON `leave_applications`.applicantID=employee_list.id
               WHERE `leave_data_for_approval`.signatory = ?
                 AND `leave_data_for_approval`.isSupervisor = 1
-                AND `leave_data_for_approval`.isApproved = 0"
+                AND `leave_data_for_approval`.isApproved = 0
+                AND `leave_applications`.status <> 3"
            . $filterClause;
 
 // Build search clauses
@@ -123,7 +136,9 @@ mysqli_stmt_close($countStmt);
 // ORDER + LIMIT
 $orderColIdx = isset($request['order'][0]['column']) ? intval($request['order'][0]['column']) : 0;
 $orderCol = $columns[$orderColIdx] ?? $columns[0];
-$orderDir = (isset($request['order'][0]['dir']) && strtolower($request['order'][0]['dir']) === 'desc') ? 'DESC' : 'ASC';
+// Default DESC (newest first) so direct calls without an explicit
+// order param don't push the latest application to the bottom.
+$orderDir = (isset($request['order'][0]['dir']) && strtolower($request['order'][0]['dir']) === 'asc') ? 'ASC' : 'DESC';
 $start = isset($request['start']) ? max(0, intval($request['start'])) : 0;
 $length = isset($request['length']) ? max(1, intval($request['length'])) : 10;
 
@@ -210,9 +225,46 @@ while ($empRow = mysqli_fetch_array($query)) {
         $empCode = '';
         $_codeR = pq_fetch_one($con, "SELECT employee_id FROM employee_list WHERE id = ?", 's', $applicantID);
         if ($_codeR) $empCode = trim($_codeR['employee_id'] ?? '');
+
+        // Return-context chip. Text/colour reflect the LATEST return type
+        // so a fresh applicant resubmit doesn't look identical to a senior
+        // signatory demanding re-verification. Types:
+        //   * to_applicant           → applicant fixed and resubmitted
+        //   * to_previous_signatory  → a higher signatory sent it back to me
+        //   * to_admin               → admin re-forwarded after a bounce
+        $_resubmitChip = '';
+        if ($hasReturnHistory) {
+            $_rr = pq_fetch_one($con,
+                "SELECT returnType, returnedByName
+                 FROM leave_return_history
+                 WHERE leaveApplicationID = ?
+                 ORDER BY dataID DESC LIMIT 1",
+                'i', $leaveAppID);
+            if ($_rr) {
+                $_rt = $_rr['returnType'] ?? '';
+                $_by = trim($_rr['returnedByName'] ?? '');
+                if ($_rt === 'to_previous_signatory') {
+                    $_chipTxt = 'উর্ধ্বতন সিদ্ধান্তকারী কর্তৃক পুনঃ যাচাইয়ের জন্য ফেরত'
+                              . ($_by !== '' ? ' — ' . htmlspecialchars($_by) : '');
+                    $_chipBg = '#fce8e6'; $_chipFg = '#a52a2a'; $_chipBd = '#f5c5c1';
+                    $_chipIcon = 'tabler-arrow-back-up';
+                } elseif ($_rt === 'to_admin') {
+                    $_chipTxt = 'প্রশাসনিক ডেস্ক থেকে পুনঃ ফরওয়ার্ড';
+                    $_chipBg = '#e5f0ff'; $_chipFg = '#1c4d94'; $_chipBd = '#c9dbf6';
+                    $_chipIcon = 'tabler-share';
+                } else {
+                    $_chipTxt = 'পুনঃ যাচাইয়ের পর জমা';
+                    $_chipBg = '#fff3e1'; $_chipFg = '#b8651a'; $_chipBd = '#f0d9a8';
+                    $_chipIcon = 'tabler-refresh';
+                }
+                $_resubmitChip = '<div class="mt-1"><span style="display:inline-block;background:' . $_chipBg . ';color:' . $_chipFg . ';font-size:0.68rem;padding:2px 8px;border-radius:999px;border:1px solid ' . $_chipBd . ';line-height:1.3;"><i class="ti ' . $_chipIcon . ' me-1"></i>' . $_chipTxt . '</span></div>';
+            }
+        }
+
         $applicantCell = '<div class="emp-cell">' . $avatarHtml
                        . '<div class="emp-meta"><div class="emp-name">' . htmlspecialchars($empName) . ($empCode ? ' <span class="emp-sub-light">(' . banglaNumber($empCode) . ')</span>' : '') . '</div>'
                        . ($empJob ? '<div class="emp-sub">' . htmlspecialchars($empJob) . '</div>' : '')
+                       . $_resubmitChip
                        . '</div></div>';
 
         // ── Section + Center as stacked chips ──────────────────────
