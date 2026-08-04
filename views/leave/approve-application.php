@@ -129,19 +129,34 @@ if ($_alChk && mysqli_num_rows($_alChk) > 0) {
     }
 
     $apvStmt = mysqli_prepare($con,
-        "SELECT actor_name, createdAt
+        "SELECT actor_name, action, createdAt
          FROM audit_log
          WHERE target_type = 'leave_application'
            AND target_id = ?
            AND action IN ('leave_recommended', 'leave_chain_approved', 'leave_approved')
          ORDER BY createdAt ASC, dataID ASC");
+    // $approvalAuditTs stores LATEST ts per (actor, action) — used for
+    // the current-state event's timestamp.
+    // $approvalAuditEventsAll keeps ALL rows so a signatory who acted
+    // multiple times (approve → rewind → re-approve) surfaces every
+    // approval as its own event; without this, only the latest chain
+    // approval showed up and the earlier one was invisible even though
+    // audit_log had it.
+    $approvalAuditEventsAll = [];
     if ($apvStmt) {
         mysqli_stmt_bind_param($apvStmt, 'i', $leaveApplicationID);
         mysqli_stmt_execute($apvStmt);
         $apvRes = mysqli_stmt_get_result($apvStmt);
         while ($ar = mysqli_fetch_assoc($apvRes)) {
             $_n = trim($ar['actor_name'] ?? '');
-            if ($_n !== '') $approvalAuditTs[$_n] = strtotime($ar['createdAt']);
+            if ($_n === '') continue;
+            $_k = $_n . '|' . $ar['action'];
+            $approvalAuditTs[$_k] = strtotime($ar['createdAt']);
+            $approvalAuditEventsAll[] = [
+                'name'   => $_n,
+                'action' => $ar['action'],
+                'ts'     => strtotime($ar['createdAt']),
+            ];
         }
         mysqli_stmt_close($apvStmt);
     }
@@ -681,7 +696,11 @@ if (!$_appNo && function_exists('generateApplicationNo')) {
 //              'subject' => optional, 'body' => …, 'extra' => optional]
 $threadEvents = [];
 
-// 1) Applicant's original application (always first)
+// 1) Applicant's original application (always first).
+// Include the supervisor the applicant selected as `extra` so the
+// timeline explicitly shows "→ [supervisor name]" — otherwise the
+// initial "sent to supervisor for recommendation" step is implicit
+// and readers can't tell who received it first.
 $applicantTs = !empty($app['submitDate']) ? strtotime($app['submitDate']) : 0;
 $applicantBodyParts = [];
 if (!empty(trim($app['subject'] ?? ''))) {
@@ -689,6 +708,13 @@ if (!empty(trim($app['subject'] ?? ''))) {
 }
 if (!empty(trim($app['leaveApplication'] ?? ''))) {
     $applicantBodyParts[] = nl2br(htmlspecialchars($app['leaveApplication']));
+}
+$_supName = '';
+foreach ($sigHistory as $_sh) {
+    if ((int)($_sh['isSupervisor'] ?? 0) === 1) {
+        $_supName = trim($_sh['employee_name'] ?? '');
+        break;
+    }
 }
 $threadEvents[] = [
     'ts'     => $applicantTs,
@@ -698,6 +724,7 @@ $threadEvents[] = [
     'badge'  => ['আবেদনকারী', '#e8e5ff', '#5648c4'],
     'color'  => '#6c5ce7',
     'icon'   => 'tabler-user',
+    'extra'  => $_supName !== '' ? '→ ' . htmlspecialchars($_supName) . ' (সুপারভাইজার)' : '',
     'body'   => $applicantBodyParts ? implode('<br>', $applicantBodyParts) : '<em class="text-muted">— কোনো বিবরণ নেই —</em>',
 ];
 
@@ -705,7 +732,8 @@ $threadEvents[] = [
 foreach ($sigHistory as $sig) {
     if ((int)$sig['isSupervisor'] !== 1) continue;
     $_sigName = $sig['employee_name'] ?? '';
-    $_ts = $approvalAuditTs[$_sigName] ?? (!empty($sig['approvedDate']) ? strtotime($sig['approvedDate']) : 0);
+    $_ts = $approvalAuditTs[$_sigName . '|leave_recommended']
+        ?? (!empty($sig['approvedDate']) ? strtotime($sig['approvedDate']) : 0);
     $threadEvents[] = [
         'ts'    => $_ts,
         'order' => 1,
@@ -751,7 +779,9 @@ if (!empty($adminNoteHistory)) {
 foreach ($sigHistory as $sig) {
     if ((int)$sig['isSupervisor'] === 1) continue;
     $_sigName = $sig['employee_name'] ?? '';
-    $_ts = $approvalAuditTs[$_sigName] ?? (!empty($sig['approvedDate']) ? strtotime($sig['approvedDate']) : 0);
+    $_ts = $approvalAuditTs[$_sigName . '|leave_chain_approved']
+        ?? $approvalAuditTs[$_sigName . '|leave_approved']
+        ?? (!empty($sig['approvedDate']) ? strtotime($sig['approvedDate']) : 0);
     $threadEvents[] = [
         'ts'    => $_ts,
         'order' => 3,
@@ -762,6 +792,48 @@ foreach ($sigHistory as $sig) {
         'icon'  => 'tabler-circle-check',
         'body'  => !empty(trim($sig['note'] ?? '')) ? nl2br(htmlspecialchars($sig['note'])) : '<em class="text-muted">কোনো মন্তব্য নেই</em>',
     ];
+}
+
+// 4b) Historical approvals — sigHistory only holds the LATEST state of
+// each row, so a signatory who approved, was rewound after a ফেরত, and
+// re-approved appears only once. Iterate audit_log entries and add
+// EXTRA events for any older approval whose timestamp doesn't match the
+// current row's rendered ts. The historical body is generic because the
+// specific note wasn't preserved — only the current row keeps its note.
+foreach ($approvalAuditEventsAll as $ae) {
+    $_aeName   = $ae['name'];
+    $_aeAction = $ae['action'];
+    $_isSupAction = ($_aeAction === 'leave_recommended');
+    $_currentTs = $_isSupAction
+        ? ($approvalAuditTs[$_aeName . '|leave_recommended'] ?? 0)
+        : ($approvalAuditTs[$_aeName . '|leave_chain_approved']
+           ?? $approvalAuditTs[$_aeName . '|leave_approved'] ?? 0);
+    // Skip the LATEST entry per (actor, action) — already rendered above.
+    if ($_currentTs > 0 && $ae['ts'] === $_currentTs) continue;
+
+    if ($_isSupAction) {
+        $threadEvents[] = [
+            'ts'    => $ae['ts'],
+            'order' => 1,
+            'name'  => $_aeName,
+            'title' => '',
+            'badge' => ['বিভাগীয় প্রধান (পূর্ববর্তী)', '#d1f4ff', '#0883a3'],
+            'color' => '#0dcaf0',
+            'icon'  => 'tabler-history',
+            'body'  => '<em class="text-muted">সিদ্ধান্ত নেওয়া হয়েছিল (পরবর্তীতে পুনর্বিবেচনার আগে)</em>',
+        ];
+    } else {
+        $threadEvents[] = [
+            'ts'    => $ae['ts'],
+            'order' => 3,
+            'name'  => $_aeName,
+            'title' => '',
+            'badge' => ['অনুমোদনকারী (পূর্ববর্তী)', '#d8f5e3', '#1a7e44'],
+            'color' => '#28c76f',
+            'icon'  => 'tabler-history',
+            'body'  => '<em class="text-muted">অনুমোদন করা হয়েছিল (ফেরতের কারণে পুনর্বিবেচনার আগে)</em>',
+        ];
+    }
 }
 
 // 5) Return (ফেরত) entries
