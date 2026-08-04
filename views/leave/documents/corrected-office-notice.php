@@ -382,25 +382,18 @@ function generatePDFData($leaveApplicationID) {
         $html .= '</tr>';
         $html .= '</table>';
         
-        // Copy to list — always render header + 3 fixed labels first, then
-        // any admin-added employees. Center sourced from the leave app's own
-        // org so a later transfer never rewrites old notices.
-        $html .= '<p>&nbsp;</p>';
-        $html .= '<p>অনুলিপি :</p>';
-
-        $copySL = 1;
-        $_defaultCopies = [
-            'প্রশাসন বিভাগ, বিটাক, ' . ($orgData['organization_name'] ?? '—'),
-            'ব্যক্তিগত নথির কপি',
-            'অফিস কপি',
-        ];
-        foreach ($_defaultCopies as $_dc) {
-            $html .= '<p>' . banglaNumber($copySL) . '। ' . htmlspecialchars($_dc) . '</p>';
-            $copySL++;
-        }
-
+        // Copy to list — see leave-notice.php for the schema convention.
         if (!empty($copyToList)) {
+            $html .= '<p>&nbsp;</p>';
+            $html .= '<p>অনুলিপি :</p>';
+
+            $copySL = 1;
             foreach ($copyToList as $copy) {
+                if (!empty(trim($copy['label'] ?? ''))) {
+                    $html .= '<p>' . banglaNumber($copySL) . '। ' . htmlspecialchars($copy['label']) . '</p>';
+                    $copySL++;
+                    continue;
+                }
                 // Get employee details
                 $stmt = $con->prepare("SELECT * FROM employee_list WHERE id = ?");
                 $stmt->bind_param("i", $copy['employeeID']);

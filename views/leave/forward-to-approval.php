@@ -67,14 +67,61 @@ $templatesQ = mysqli_query($con, "SELECT * FROM leave_templates WHERE templateTy
 $templates  = [];
 while ($t = mysqli_fetch_assoc($templatesQ)) $templates[] = $t;
 
-// Existing copy-to list
+// Auto-migrate: leave_notice_copy needs a `label` column so the 3 fixed
+// অনুলিপি entries (প্রশাসন বিভাগ / ব্যক্তিগত নথি / অফিস কপি) can be
+// stored as rows alongside real employees, letting the admin drag/reorder
+// the whole list instead of forcing defaults to always sit at the top.
+$__colChk = mysqli_query($con, "SHOW COLUMNS FROM leave_notice_copy LIKE 'label'");
+if ($__colChk && mysqli_num_rows($__colChk) === 0) {
+    mysqli_query($con, "ALTER TABLE leave_notice_copy ADD COLUMN label VARCHAR(255) NULL AFTER employeeID");
+}
+
+// Existing copy-to list (mixed: label rows + employee rows)
 $copyToStmt = mysqli_prepare($con,
-    "SELECT * FROM leave_notice_copy WHERE applicationID=? ORDER BY serial ASC");
+    "SELECT * FROM leave_notice_copy WHERE applicationID=? ORDER BY serial ASC, dataID ASC");
 mysqli_stmt_bind_param($copyToStmt, 'i', $leaveApplicationID);
 mysqli_stmt_execute($copyToStmt);
 $copyToRes  = mysqli_stmt_get_result($copyToStmt);
 $copyToList = [];
 while ($ct = mysqli_fetch_assoc($copyToRes)) $copyToList[] = $ct;
+
+// First-time seed — if this application has never been forwarded yet
+// (no rows), pre-populate the list with the 3 fixed defaults at
+// positions 1/2/3 so the admin sees them from the start. Center name
+// pulled from leave_applications.organization_id, not the applicant's
+// current employee record, so a later transfer never rewrites an old
+// notice.
+$_hasAnyCopy = !empty($copyToList);
+$_hasLabelRow = false;
+foreach ($copyToList as $_ct) {
+    if (!empty(trim($_ct['label'] ?? ''))) { $_hasLabelRow = true; break; }
+}
+if (!$_hasAnyCopy || !$_hasLabelRow) {
+    // Prepend the 3 defaults as in-memory rows so they render as
+    // reorderable rows on first form-open. They'll be persisted on save.
+    $_seedLabels = [
+        'প্রশাসন বিভাগ, বিটাক, ' . ($orgData['organization_name'] ?? '—'),
+        'ব্যক্তিগত নথির কপি',
+        'অফিস কপি',
+    ];
+    // Bump existing employee-row serials to make room at 1/2/3
+    foreach ($copyToList as &$_r) { $_r['serial'] = (int)$_r['serial'] + 3; }
+    unset($_r);
+    $_seedRows = [];
+    foreach ($_seedLabels as $_i => $_lbl) {
+        $_seedRows[] = [
+            'dataID'          => 0,
+            'employeeID'      => 0,
+            'label'           => $_lbl,
+            'organization_id' => 0,
+            'section_id'      => 0,
+            'designation_id'  => 0,
+            'applicationID'   => $leaveApplicationID,
+            'serial'          => $_i + 1,
+        ];
+    }
+    $copyToList = array_merge($_seedRows, $copyToList);
+}
 
 // All active employees (for copy-to dropdown)
 $empListQ = mysqli_query($con,
@@ -964,90 +1011,68 @@ include(__DIR__ . '/../../includes/applicant_balance_modal.php');
                 <span class="ti-tile"><i class="ti tabler-copy"></i></span>
                 অনুলিপি
             </h6>
-            <?php
-                // Three fixed labels that every office notice must carry.
-                // Rendered read-only above the editable table so the admin
-                // can see they will appear on the notice, then add real
-                // employee entries below. Not stored in leave_notice_copy —
-                // the office-notice generator prepends them at render time
-                // from these same strings, keeping this a UI-only convention.
-                //
-                // Center is sourced from `leave_applications.organization_id`
-                // (via $orgData) rather than the applicant's current employee
-                // record — otherwise a later transfer would silently rewrite
-                // the center on old office notices.
-                $_defaultCopies = [
-                    'প্রশাসন বিভাগ, বিটাক, ' . ($orgData['organization_name'] ?? '—'),
-                    'ব্যক্তিগত নথির কপি',
-                    'অফিস কপি',
-                ];
-            ?>
-            <div class="table-responsive mb-2">
-                <table class="table table-bordered mb-0" id="copyToDefaultsTable">
-                    <thead>
-                        <tr>
-                            <th width="80" class="text-center">ক্রমিক</th>
-                            <th>নির্ধারিত অনুলিপি প্রাপক</th>
-                            <th width="120" class="text-center">অনুক্রম</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($_defaultCopies as $_ci => $_cLabel): ?>
-                        <tr style="background:#f7f6ff;">
-                            <td class="text-center row-serial"><?= $_ci + 1 ?></td>
-                            <td>
-                                <span class="d-inline-flex align-items-center gap-2">
-                                    <i class="ti tabler-pin text-primary"></i>
-                                    <?= htmlspecialchars($_cLabel) ?>
-                                </span>
-                                <span class="badge bg-label-secondary ms-2" style="font-size:0.65rem;">নির্ধারিত</span>
-                            </td>
-                            <td class="text-center text-muted">—</td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
             <div class="text-muted small mb-2" style="font-size:0.78rem;">
-                <i class="ti tabler-info-circle me-1"></i>উপরের ৩টি অনুলিপি অফিস আদেশে স্বয়ংক্রিয়ভাবে যুক্ত হবে। নিচে অতিরিক্ত কর্মকর্তা যোগ করুন।
+                <i class="ti tabler-info-circle me-1"></i>নির্ধারিত (গোলাপি) সারি ও কর্মকর্তা সারির অনুক্রম নম্বর পরিবর্তন করে অফিস আদেশে ক্রম সাজানো যাবে।
             </div>
             <div class="table-responsive mb-3">
                 <table class="table table-bordered" id="copyToTable">
                     <thead>
                         <tr>
                             <th width="80" class="text-center">ক্রমিক</th>
-                            <th>কর্মকর্তার নাম ও পদবী</th>
+                            <th>প্রাপক</th>
                             <th width="120" class="text-center">অনুক্রম</th>
+                            <th width="60" class="text-center">—</th>
                         </tr>
                     </thead>
                     <tbody id="copyToBody">
-                        <?php foreach ($copyToList as $i => $ct): ?>
-                        <tr>
+                        <?php foreach ($copyToList as $i => $ct):
+                            $_isLabel = !empty(trim($ct['label'] ?? ''));
+                            $_rowBg   = $_isLabel ? 'background:#f7f6ff;' : '';
+                        ?>
+                        <tr style="<?= $_rowBg ?>">
                             <td class="text-center row-serial"><?= $i + 1 ?></td>
                             <td>
-                                <select class="form-select select2 copy-to-select" name="copyTo[]">
-                                    <option value="">-- নির্বাচন করুন --</option>
-                                    <?php foreach ($empList as $e): ?>
-                                    <option value="<?= $e['id'] ?>" <?= ($ct['employeeID'] == $e['id']) ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars($e['employee_id'] . ' - ' . $e['employee_name']) ?>
-                                    </option>
-                                    <?php endforeach; ?>
-                                </select>
+                                <?php if ($_isLabel): ?>
+                                    <span class="d-inline-flex align-items-center gap-2">
+                                        <i class="ti tabler-pin text-primary"></i>
+                                        <?= htmlspecialchars($ct['label']) ?>
+                                    </span>
+                                    <span class="badge bg-label-secondary ms-2" style="font-size:0.65rem;">নির্ধারিত</span>
+                                    <input type="hidden" name="copyKind[]"  value="label">
+                                    <input type="hidden" name="copyLabel[]" value="<?= htmlspecialchars($ct['label']) ?>">
+                                    <input type="hidden" name="copyEmp[]"   value="0">
+                                <?php else: ?>
+                                    <select class="form-select select2 copy-to-select" name="copyEmp[]">
+                                        <option value="">-- নির্বাচন করুন --</option>
+                                        <?php foreach ($empList as $e): ?>
+                                        <option value="<?= $e['id'] ?>" <?= ($ct['employeeID'] == $e['id']) ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars($e['employee_id'] . ' - ' . $e['employee_name']) ?>
+                                        </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <input type="hidden" name="copyKind[]"  value="emp">
+                                    <input type="hidden" name="copyLabel[]" value="">
+                                <?php endif; ?>
                             </td>
                             <td class="text-center">
-                                <input type="number" class="form-control" name="serial[]" value="<?= $ct['serial'] ?>">
+                                <input type="number" class="form-control text-center" name="copySerial[]" value="<?= (int)$ct['serial'] ?>" min="1">
+                            </td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-icon btn-label-danger row-delete" title="সারি মুছুন">
+                                    <i class="ti tabler-trash"></i>
+                                </button>
                             </td>
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
-            <div class="d-flex gap-2 mb-2">
+            <div class="d-flex gap-2 mb-2 flex-wrap">
                 <button type="button" class="btn btn-sm btn-label-primary" id="addRow">
-                    <i class="ti tabler-plus me-1"></i>সারি যোগ করুন
+                    <i class="ti tabler-plus me-1"></i>কর্মকর্তা সারি যোগ করুন
                 </button>
-                <button type="button" class="btn btn-sm btn-label-danger" id="removeRow">
-                    <i class="ti tabler-minus me-1"></i>সারি মুছুন
+                <button type="button" class="btn btn-sm btn-label-secondary" id="reseqRows" title="ক্রমিক অনুযায়ী পুনরায় সাজান">
+                    <i class="ti tabler-arrows-sort me-1"></i>অনুক্রম অনুযায়ী সাজান
                 </button>
             </div>
 
@@ -1354,33 +1379,57 @@ $(document).ready(function () {
         return html;
     }
 
-    // Update row serial numbers
-    function reSerialize() {
+    // Update ক্রমিক column (visual only) after any row add/remove/resort.
+    // The অনুক্রম input is the source of truth for the PDF order — we don't
+    // reset it here, only the display index.
+    function reIndex() {
         $('#copyToBody tr').each(function (i) {
             $(this).find('.row-serial').text(i + 1);
-            $(this).find('input[name="serial[]"]').val(i + 1);
         });
     }
 
-    // Add row
+    // Add an employee row (defaults are seeded server-side)
     $('#addRow').on('click', function () {
-        var rowCount = $('#copyToBody tr').length + 1;
+        // Next default অনুক্রম = max existing + 1
+        var maxSerial = 0;
+        $('#copyToBody input[name="copySerial[]"]').each(function () {
+            var v = parseInt($(this).val(), 10);
+            if (!isNaN(v) && v > maxSerial) maxSerial = v;
+        });
+        var nextSerial = maxSerial + 1;
         var $row = $('<tr>' +
-            '<td class="text-center row-serial">' + rowCount + '</td>' +
-            '<td><select class="form-select copy-to-select" name="copyTo[]">' + buildEmpOptions() + '</select></td>' +
-            '<td class="text-center"><input type="number" class="form-control" name="serial[]" value="' + rowCount + '"></td>' +
+            '<td class="text-center row-serial"></td>' +
+            '<td>' +
+                '<select class="form-select copy-to-select" name="copyEmp[]">' + buildEmpOptions() + '</select>' +
+                '<input type="hidden" name="copyKind[]"  value="emp">' +
+                '<input type="hidden" name="copyLabel[]" value="">' +
+            '</td>' +
+            '<td class="text-center"><input type="number" class="form-control text-center" name="copySerial[]" value="' + nextSerial + '" min="1"></td>' +
+            '<td class="text-center"><button type="button" class="btn btn-sm btn-icon btn-label-danger row-delete" title="সারি মুছুন"><i class="ti tabler-trash"></i></button></td>' +
             '</tr>');
         $('#copyToBody').append($row);
-        // Init Select2 on the new select
         $row.find('.copy-to-select').select2({ width: '100%' });
+        reIndex();
     });
 
-    // Remove last row
-    $('#removeRow').on('click', function () {
-        if ($('#copyToBody tr').length > 0) {
-            $('#copyToBody tr:last').remove();
-            reSerialize();
-        }
+    // Per-row delete
+    $(document).on('click', '#copyToBody .row-delete', function () {
+        $(this).closest('tr').remove();
+        reIndex();
+    });
+
+    // Re-sort rows in visual order matching the অনুক্রম input values
+    $('#reseqRows').on('click', function () {
+        var $rows = $('#copyToBody tr').toArray();
+        $rows.sort(function (a, b) {
+            var av = parseInt($(a).find('input[name="copySerial[]"]').val(), 10) || 0;
+            var bv = parseInt($(b).find('input[name="copySerial[]"]').val(), 10) || 0;
+            return av - bv;
+        });
+        // Re-append in the sorted order — jQuery detaches + reattaches
+        var $body = $('#copyToBody');
+        $rows.forEach(function (r) { $body.append(r); });
+        reIndex();
     });
 
     // Submit form

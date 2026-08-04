@@ -104,30 +104,73 @@ $fwdStmt = mysqli_prepare($con,
 mysqli_stmt_bind_param($fwdStmt, 'i', $leaveApplicationID);
 mysqli_stmt_execute($fwdStmt);
 
-// Update copy-to list: delete old entries, insert new
+// Update copy-to list: delete old entries, insert new. Rows come in
+// three parallel arrays keyed by kind:
+//   copyKind[]   = 'label' | 'emp'
+//   copyLabel[]  = the fixed-label text (empty for employee rows)
+//   copyEmp[]    = employee_list.id  (0 for label rows)
+//   copySerial[] = ক্রম value the admin set
+// Legacy fallback: if the form still sends copyTo[] + serial[] (older
+// deployments), treat them as employee-only rows.
 $delStmt = mysqli_prepare($con, "DELETE FROM leave_notice_copy WHERE applicationID=?");
 mysqli_stmt_bind_param($delStmt, 'i', $leaveApplicationID);
 mysqli_stmt_execute($delStmt);
 
-$copyToArr = (array)($_POST['copyTo'] ?? []);
-$serialArr = (array)($_POST['serial'] ?? []);
+// Auto-migrate the label column here too — save might run before the
+// admin opens the form on a fresh install.
+$__colChk = mysqli_query($con, "SHOW COLUMNS FROM leave_notice_copy LIKE 'label'");
+if ($__colChk && mysqli_num_rows($__colChk) === 0) {
+    mysqli_query($con, "ALTER TABLE leave_notice_copy ADD COLUMN label VARCHAR(255) NULL AFTER employeeID");
+}
 
-foreach ($copyToArr as $i => $empID) {
-    $empID  = intval($empID);
-    $serial = intval($serialArr[$i] ?? ($i + 1));
-    if ($empID > 0) {
+$copyKindArr  = (array)($_POST['copyKind']  ?? []);
+$copyLabelArr = (array)($_POST['copyLabel'] ?? []);
+$copyEmpArr   = (array)($_POST['copyEmp']   ?? []);
+$copySerArr   = (array)($_POST['copySerial']?? []);
 
-    $getEmpDetailsQ = mysqli_prepare($con, "SELECT * FROM employee_list WHERE id=?");
-    mysqli_stmt_bind_param($getEmpDetailsQ, 'i', $empID);
-    mysqli_stmt_execute($getEmpDetailsQ);
-    $empDetails = mysqli_fetch_assoc(mysqli_stmt_get_result($getEmpDetailsQ));
-
-        $insStmt = mysqli_prepare($con,
-            "INSERT INTO leave_notice_copy (employeeID, organization_id, section_id, designation_id, applicationID, serial) VALUES (?,?,?,?,?,?)");
-        mysqli_stmt_bind_param($insStmt, 'iiiiii', $empID, $empDetails['organization_id'], $empDetails['section_id'], $empDetails['designation'], $leaveApplicationID, $serial);
-        mysqli_stmt_execute($insStmt);
+// Legacy path — old form didn't split kind/label/emp.
+if (empty($copyKindArr) && !empty($_POST['copyTo'])) {
+    foreach ((array)$_POST['copyTo'] as $_i => $_v) {
+        $copyKindArr[]  = 'emp';
+        $copyLabelArr[] = '';
+        $copyEmpArr[]   = $_v;
+        $copySerArr[]   = $_POST['serial'][$_i] ?? ($_i + 1);
     }
 }
+
+$insLabelStmt = mysqli_prepare($con,
+    "INSERT INTO leave_notice_copy (employeeID, label, organization_id, section_id, designation_id, applicationID, serial)
+     VALUES (0, ?, 0, 0, 0, ?, ?)");
+$insEmpStmt = mysqli_prepare($con,
+    "INSERT INTO leave_notice_copy (employeeID, label, organization_id, section_id, designation_id, applicationID, serial)
+     VALUES (?, NULL, ?, ?, ?, ?, ?)");
+
+foreach ($copyKindArr as $i => $kind) {
+    $serial = intval($copySerArr[$i] ?? ($i + 1));
+    if ($kind === 'label') {
+        $labelTxt = trim((string)($copyLabelArr[$i] ?? ''));
+        if ($labelTxt === '') continue;
+        mysqli_stmt_bind_param($insLabelStmt, 'sii', $labelTxt, $leaveApplicationID, $serial);
+        mysqli_stmt_execute($insLabelStmt);
+    } else {
+        $empID = intval($copyEmpArr[$i] ?? 0);
+        if ($empID <= 0) continue;
+        $getEmpDetailsQ = mysqli_prepare($con, "SELECT * FROM employee_list WHERE id=?");
+        mysqli_stmt_bind_param($getEmpDetailsQ, 'i', $empID);
+        mysqli_stmt_execute($getEmpDetailsQ);
+        $empDetails = mysqli_fetch_assoc(mysqli_stmt_get_result($getEmpDetailsQ)) ?: [];
+        mysqli_stmt_bind_param($insEmpStmt, 'iiiiii',
+            $empID,
+            $empDetails['organization_id'],
+            $empDetails['section_id'],
+            $empDetails['designation'],
+            $leaveApplicationID,
+            $serial);
+        mysqli_stmt_execute($insEmpStmt);
+    }
+}
+mysqli_stmt_close($insLabelStmt);
+mysqli_stmt_close($insEmpStmt);
 
 if (function_exists('audit_log')) {
     audit_log('leave_forwarded_to_approval', [

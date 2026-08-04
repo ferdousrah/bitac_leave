@@ -353,28 +353,22 @@ function generatePDFData($leaveApplicationID) {
         $html .= '</tr>';
         $html .= '</table>';
         
-        // Copy to list — always render the "অনুলিপি :" header because the
-        // three fixed labels below must appear on every office notice; then
-        // any admin-added employees follow. Center is pulled from the leave
-        // application's own organization ($orgData), not the applicant's
-        // current employee record, so a later transfer never rewrites old
-        // office notices.
-        $html .= '<p>&nbsp;</p>';
-        $html .= '<p>অনুলিপি :</p>';
-
-        $copySL = 1;
-        $_defaultCopies = [
-            'প্রশাসন বিভাগ, বিটাক, ' . ($orgData['organization_name'] ?? '—'),
-            'ব্যক্তিগত নথির কপি',
-            'অফিস কপি',
-        ];
-        foreach ($_defaultCopies as $_dc) {
-            $html .= '<p>' . banglaNumber($copySL) . '। ' . htmlspecialchars($_dc) . '</p>';
-            $copySL++;
-        }
-
+        // Copy to list — each row is either a fixed label (employeeID=0 +
+        // label set) or a real employee. Order comes straight from the
+        // admin-editable `serial` column, so defaults and employees can be
+        // interleaved as needed.
         if (!empty($copyToList)) {
+            $html .= '<p>&nbsp;</p>';
+            $html .= '<p>অনুলিপি :</p>';
+
+            $copySL = 1;
             foreach ($copyToList as $copy) {
+                // Label-only row → render text and skip employee lookup
+                if (!empty(trim($copy['label'] ?? ''))) {
+                    $html .= '<p>' . banglaNumber($copySL) . '। ' . htmlspecialchars($copy['label']) . '</p>';
+                    $copySL++;
+                    continue;
+                }
                 // Get employee details
                 $stmt = $con->prepare("SELECT * FROM employee_list WHERE id = ?");
                 $stmt->bind_param("i", $copy['employeeID']);
