@@ -1012,13 +1012,14 @@ include(__DIR__ . '/../../includes/applicant_balance_modal.php');
                 অনুলিপি
             </h6>
             <div class="text-muted small mb-2" style="font-size:0.78rem;">
-                <i class="ti tabler-info-circle me-1"></i>নির্ধারিত (গোলাপি) সারি ও কর্মকর্তা সারির অনুক্রম নম্বর পরিবর্তন করে অফিস আদেশে ক্রম সাজানো যাবে।
+                <i class="ti tabler-info-circle me-1"></i>বাম দিকের <i class="ti tabler-grip-vertical"></i> আইকন ধরে সারি টেনে (drag) নতুন ক্রমে সাজানো যাবে অথবা সরাসরি অনুক্রম নম্বর সম্পাদনা করা যাবে।
             </div>
             <div class="table-responsive mb-3">
                 <table class="table table-bordered" id="copyToTable">
                     <thead>
                         <tr>
-                            <th width="80" class="text-center">ক্রমিক</th>
+                            <th width="40" class="text-center">—</th>
+                            <th width="70" class="text-center">ক্রমিক</th>
                             <th>প্রাপক</th>
                             <th width="120" class="text-center">অনুক্রম</th>
                             <th width="60" class="text-center">—</th>
@@ -1030,6 +1031,9 @@ include(__DIR__ . '/../../includes/applicant_balance_modal.php');
                             $_rowBg   = $_isLabel ? 'background:#f7f6ff;' : '';
                         ?>
                         <tr style="<?= $_rowBg ?>">
+                            <td class="text-center drag-handle" style="cursor:grab;color:#8a90a6;" title="টেনে সরান">
+                                <i class="ti tabler-grip-vertical"></i>
+                            </td>
                             <td class="text-center row-serial"><?= $i + 1 ?></td>
                             <td>
                                 <?php if ($_isLabel): ?>
@@ -1071,10 +1075,24 @@ include(__DIR__ . '/../../includes/applicant_balance_modal.php');
                 <button type="button" class="btn btn-sm btn-label-primary" id="addRow">
                     <i class="ti tabler-plus me-1"></i>কর্মকর্তা সারি যোগ করুন
                 </button>
-                <button type="button" class="btn btn-sm btn-label-secondary" id="reseqRows" title="ক্রমিক অনুযায়ী পুনরায় সাজান">
+                <button type="button" class="btn btn-sm btn-label-secondary" id="reseqRows" title="অনুক্রম ইনপুট অনুযায়ী সারি সাজান">
                     <i class="ti tabler-arrows-sort me-1"></i>অনুক্রম অনুযায়ী সাজান
                 </button>
             </div>
+
+            <style>
+                #copyToBody tr.ui-sortable-helper {
+                    background: #fff !important;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                }
+                #copyToBody .drag-handle:hover { color: #6c5ce7 !important; }
+                #copyToBody .drag-handle:active { cursor: grabbing !important; }
+                .copy-drop-placeholder {
+                    background: #eef0f8;
+                    height: 46px;
+                    border: 2px dashed #b9b0f4;
+                }
+            </style>
 
             <!-- Action buttons -->
             <div class="fwd-actions d-flex gap-2 justify-content-end flex-wrap">
@@ -1398,6 +1416,7 @@ $(document).ready(function () {
         });
         var nextSerial = maxSerial + 1;
         var $row = $('<tr>' +
+            '<td class="text-center drag-handle" style="cursor:grab;color:#8a90a6;" title="টেনে সরান"><i class="ti tabler-grip-vertical"></i></td>' +
             '<td class="text-center row-serial"></td>' +
             '<td>' +
                 '<select class="form-select copy-to-select" name="copyEmp[]">' + buildEmpOptions() + '</select>' +
@@ -1411,6 +1430,39 @@ $(document).ready(function () {
         $row.find('.copy-to-select').select2({ width: '100%' });
         reIndex();
     });
+
+    // Drag-and-drop reorder via jQuery UI Sortable. Drop → renumber the
+    // অনুক্রম inputs left-to-right so the visual order becomes the
+    // canonical order for the office notice. Users can still fine-tune
+    // the numbers manually afterwards.
+    if ($.fn.sortable) {
+        $('#copyToBody').sortable({
+            handle: '.drag-handle',
+            axis: 'y',
+            placeholder: 'copy-drop-placeholder',
+            forcePlaceholderSize: true,
+            helper: function (e, tr) {
+                // Preserve column widths while dragging (default helper collapses cells)
+                var $originals = tr.children();
+                var $helper = tr.clone();
+                $helper.children().each(function (i) {
+                    $(this).width($originals.eq(i).outerWidth());
+                });
+                return $helper;
+            },
+            start: function () {
+                // Close any open Select2 dropdowns during the drag
+                $('.copy-to-select').select2('close');
+            },
+            update: function () {
+                // Renumber অনুক্রম inputs 1..N in the new visual order
+                $('#copyToBody tr').each(function (i) {
+                    $(this).find('input[name="copySerial[]"]').val(i + 1);
+                });
+                reIndex();
+            }
+        }).disableSelection();
+    }
 
     // Per-row delete
     $(document).on('click', '#copyToBody .row-delete', function () {
