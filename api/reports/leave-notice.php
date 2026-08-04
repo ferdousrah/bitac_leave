@@ -353,12 +353,27 @@ function generatePDFData($leaveApplicationID) {
         $html .= '</tr>';
         $html .= '</table>';
         
-        // Copy to list
+        // Copy to list — always render the "অনুলিপি :" header because the
+        // three fixed labels below must appear on every office notice; then
+        // any admin-added employees follow. Center is pulled from the leave
+        // application's own organization ($orgData), not the applicant's
+        // current employee record, so a later transfer never rewrites old
+        // office notices.
+        $html .= '<p>&nbsp;</p>';
+        $html .= '<p>অনুলিপি :</p>';
+
+        $copySL = 1;
+        $_defaultCopies = [
+            'প্রশাসন বিভাগ, বিটাক, ' . ($orgData['organization_name'] ?? '—'),
+            'ব্যক্তিগত নথির কপি',
+            'অফিস কপি',
+        ];
+        foreach ($_defaultCopies as $_dc) {
+            $html .= '<p>' . banglaNumber($copySL) . '। ' . htmlspecialchars($_dc) . '</p>';
+            $copySL++;
+        }
+
         if (!empty($copyToList)) {
-            $html .= '<p>&nbsp;</p>';
-            $html .= '<p>অনুলিপি :</p>';
-            
-            $copySL = 1;
             foreach ($copyToList as $copy) {
                 // Get employee details
                 $stmt = $con->prepare("SELECT * FROM employee_list WHERE id = ?");
