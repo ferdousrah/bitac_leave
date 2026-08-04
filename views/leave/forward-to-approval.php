@@ -85,11 +85,13 @@ $copyToRes  = mysqli_stmt_get_result($copyToStmt);
 $copyToList = [];
 while ($ct = mysqli_fetch_assoc($copyToRes)) $copyToList[] = $ct;
 
-// First-time seed — if this application has never been forwarded yet
-// (no rows), pre-populate the list with the 3 fixed defaults at
-// positions 1/2/3 so the admin sees them from the start. Center name
-// pulled from leave_applications.organization_id, not the applicant's
-// current employee record, so a later transfer never rewrites an old
+// First-time seed — if this application has never had its default
+// অনুলিপি labels attached, load the configured defaults from the
+// default_notice_copies table (managed via কনফিগারেশন → ডিফল্ট অনুলিপি)
+// and prepend them as in-memory rows. `{center}` in the label is
+// replaced with the applicant's org name at render time. Center is
+// pulled from leave_applications.organization_id — not the applicant's
+// current employee record — so a later transfer never rewrites an old
 // notice.
 $_hasAnyCopy = !empty($copyToList);
 $_hasLabelRow = false;
@@ -97,15 +99,34 @@ foreach ($copyToList as $_ct) {
     if (!empty(trim($_ct['label'] ?? ''))) { $_hasLabelRow = true; break; }
 }
 if (!$_hasAnyCopy || !$_hasLabelRow) {
-    // Prepend the 3 defaults as in-memory rows so they render as
-    // reorderable rows on first form-open. They'll be persisted on save.
-    $_seedLabels = [
-        'প্রশাসন বিভাগ, বিটাক, ' . ($orgData['organization_name'] ?? '—'),
-        'ব্যক্তিগত নথির কপি',
-        'অফিস কপি',
-    ];
-    // Bump existing employee-row serials to make room at 1/2/3
-    foreach ($copyToList as &$_r) { $_r['serial'] = (int)$_r['serial'] + 3; }
+    // Pull configured defaults from DB — table auto-created + seeded
+    // by views/default-notice-copies/manage.php. Fall back to the
+    // legacy hardcoded trio if the table doesn't exist yet.
+    $_seedLabels = [];
+    $__tblChk = mysqli_query($con, "SHOW TABLES LIKE 'default_notice_copies'");
+    if ($__tblChk && mysqli_num_rows($__tblChk) > 0) {
+        $_dcQ = mysqli_query($con,
+            "SELECT label FROM default_notice_copies
+             WHERE isActive = 1
+             ORDER BY serial ASC, dataID ASC");
+        while ($_dcQ && $_dcR = mysqli_fetch_assoc($_dcQ)) $_seedLabels[] = $_dcR['label'];
+    }
+    if (empty($_seedLabels)) {
+        $_seedLabels = [
+            'প্রশাসন বিভাগ, বিটাক, {center}',
+            'ব্যক্তিগত নথির কপি',
+            'অফিস কপি',
+        ];
+    }
+    // Substitute {center} with the applicant's org name
+    $_centerName = trim($orgData['organization_name'] ?? '—');
+    $_seedLabels = array_map(function ($lbl) use ($_centerName) {
+        return str_replace('{center}', $_centerName, $lbl);
+    }, $_seedLabels);
+
+    // Bump existing employee-row serials to make room at 1..N
+    $__seedCount = count($_seedLabels);
+    foreach ($copyToList as &$_r) { $_r['serial'] = (int)$_r['serial'] + $__seedCount; }
     unset($_r);
     $_seedRows = [];
     foreach ($_seedLabels as $_i => $_lbl) {
