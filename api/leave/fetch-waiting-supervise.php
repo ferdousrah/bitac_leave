@@ -336,7 +336,7 @@ while ($empRow = mysqli_fetch_array($query)) {
 
         // ── Action group ──────────────────────────────────────────
         $action = '<div class="action-group">';
-        $action .= "<a target='_blank' href='application-details.php?menuslug=leave-approval&leaveApplicationID={$empRow['leaveApplicationID']}' class='action-icon icon-view' title='বিস্তারিত দেখুন'><i class='ti tabler-eye'></i></a>";
+        $action .= "<a href='javascript:void(0);' data-url='application-details.php?menuslug=leave-approval&leaveApplicationID={$empRow['leaveApplicationID']}' class='action-icon icon-view app-doc-view' title='বিস্তারিত দেখুন'><i class='ti tabler-eye'></i></a>";
         if ($getLeaveApplicationDetailsQRW['attachment'] != '') {
             $action .= "<a target='_blank' href='uploads/{$getLeaveApplicationDetailsQRW['attachment']}' class='action-icon icon-attach' title='সংযুক্তি দেখুন'><i class='ti tabler-paperclip'></i></a>";
         }

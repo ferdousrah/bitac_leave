@@ -493,7 +493,9 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
             <i class="ti tabler-dots-vertical"></i>
         </button>
         <ul class="dropdown-menu dropdown-menu-end shadow-sm">
-            <li><a class="dropdown-item" href="../../views/leave/application-details.php?menuslug=all-leave-application&leaveApplicationID=' . $row['dataID'] . '" target="_blank">
+            <li><a class="dropdown-item app-doc-view" href="javascript:void(0);"
+                   data-url="../../views/leave/application-details.php?menuslug=all-leave-application&leaveApplicationID=' . $row['dataID'] . '"
+                   data-title="' . $_appDocLabel . '">
                 <i class="ti ' . $_appDocIcon . ' me-2"></i>' . $_appDocLabel . '
             </a></li>';
 

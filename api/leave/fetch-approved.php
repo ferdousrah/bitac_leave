@@ -227,7 +227,7 @@ while ($row = mysqli_fetch_assoc($query)) {
 
     // Action group
     $action = '<div class="action-group">';
-    $action .= '<a class="action-icon icon-view" target="_blank" href="../../views/leave/application-details.php?menuslug=supervised-nd-approved-application-by-user&leaveApplicationID=' . $row['leaveApplicationID'] . '" title="আবেদনপত্র"><i class="ti tabler-file-text"></i></a>';
+    $action .= '<a class="action-icon icon-view app-doc-view" href="javascript:void(0);" data-url="../../views/leave/application-details.php?menuslug=supervised-nd-approved-application-by-user&leaveApplicationID=' . $row['leaveApplicationID'] . '" title="আবেদনপত্র"><i class="ti tabler-file-text"></i></a>';
     if ($row['attachment'] != '') {
         $action .= '<a class="action-icon icon-attach" target="_blank" href="uploads/' . htmlspecialchars($row['attachment']) . '" title="সংযুক্তি"><i class="ti tabler-paperclip"></i></a>';
     }

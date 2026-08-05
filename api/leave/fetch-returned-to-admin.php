@@ -202,9 +202,9 @@ while ($r = mysqli_fetch_assoc($dataRes)) {
             $statusCell = '<span class="status-pill status-pending">—</span>';
     }
 
-    // Actions — view details
-    $actionCell = '<a target="_blank" href="../../views/leave/application-details.php?menuslug=allowed-leave-applications&leaveApplicationID='
-                . (int)$r['applicationID'] . '" class="action-icon icon-view" title="বিস্তারিত দেখুন">'
+    // Actions — opens the application in the same-page preview modal
+    $actionCell = '<a href="javascript:void(0);" data-url="../../views/leave/application-details.php?menuslug=allowed-leave-applications&leaveApplicationID='
+                . (int)$r['applicationID'] . '" data-title="আবেদনপত্র" class="action-icon icon-view app-doc-view" title="বিস্তারিত দেখুন">'
                 . '<i class="ti tabler-eye"></i></a>';
 
     $data[] = [

@@ -265,17 +265,23 @@ $html = '
         <i class="ti tabler-dots-vertical"></i>
     </button>
     <ul class="dropdown-menu dropdown-menu-end shadow-sm">
-        <li><a class="dropdown-item" target="_blank" href="../../views/leave/application-details.php?menuslug=allowed-leave-applications&leaveApplicationID=' . $row['leaveApplicationID'] . '">
+        <li><a class="dropdown-item app-doc-view" href="javascript:void(0);"
+               data-url="../../views/leave/application-details.php?menuslug=allowed-leave-applications&leaveApplicationID=' . $row['leaveApplicationID'] . '"
+               data-title="' . ($_wasReturned ? 'ফেরতকৃত আবেদন' : 'আবেদনপত্র') . '">
             <i class="ti ' . ($_wasReturned ? 'tabler-file-alert' : 'tabler-file-text') . ' me-2"></i>' . ($_wasReturned ? 'ফেরতকৃত আবেদন' : 'আবেদনপত্র') . '
         </a></li>
 
         ' . ($getLeaveApplicationDetailsQRW['attachment'] != '' ?
-            '<li><a class="dropdown-item" target="_blank" href="uploads/' . htmlspecialchars($getLeaveApplicationDetailsQRW['attachment']) . '">
+            '<li><a class="dropdown-item app-doc-view" href="javascript:void(0);"
+                   data-url="uploads/' . htmlspecialchars($getLeaveApplicationDetailsQRW['attachment']) . '"
+                   data-title="সংযুক্তি">
                 <i class="ti tabler-paperclip me-2"></i>সংযুক্তি
             </a></li>' : '') . '
 
         ' . ($row['isSentbyAdmin'] == 1 ? '
-            <li><a class="dropdown-item" target="_blank" href="../../leave_application_by_admin.php?menuslug=allowed-leave-applications&leaveApplicationID=' . $row['leaveApplicationID'] . '">
+            <li><a class="dropdown-item app-doc-view" href="javascript:void(0);"
+                   data-url="../../leave_application_by_admin.php?menuslug=allowed-leave-applications&leaveApplicationID=' . $row['leaveApplicationID'] . '"
+                   data-title="সম্পাদনার নোট">
                 <i class="ti tabler-notes me-2"></i>সম্পাদনার নোট
             </a></li>
 
@@ -285,7 +291,9 @@ $html = '
                 </a></li>' : '') . '
 
             ' . ($getLeaveApplicationDetailsQRW['status'] == 1 ? '
-                <li><a class="dropdown-item" target="_blank" href="../../api/reports/leave-notice.php?menuslug=allowed-leave-applications&leaveApplicationID=' . $row['leaveApplicationID'] . '">
+                <li><a class="dropdown-item app-doc-view" href="javascript:void(0);"
+                       data-url="../../api/reports/leave-notice.php?menuslug=allowed-leave-applications&leaveApplicationID=' . $row['leaveApplicationID'] . '"
+                       data-title="অফিস আদেশ">
                     <i class="ti tabler-file-description me-2"></i>অফিস আদেশ
                 </a></li>
                 <li><a class="dropdown-item" href="new_leave_edit_form?menuslug=allowed-leave-applications&leaveApplicationID=' . $row['leaveApplicationID'] . '">

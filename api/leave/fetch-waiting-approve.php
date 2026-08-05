@@ -300,7 +300,7 @@ while ($row = mysqli_fetch_assoc($query)) {
 
         // Action group
         $action = '<div class="action-group">';
-        $action .= "<a target='_blank' href='application-details.php?menuslug=leave-approval&leaveApplicationID={$row['applicationID']}' class='action-icon icon-view' title='বিস্তারিত দেখুন'><i class='ti tabler-eye'></i></a>";
+        $action .= "<a href='javascript:void(0);' data-url='application-details.php?menuslug=leave-approval&leaveApplicationID={$row['applicationID']}' class='action-icon icon-view app-doc-view' title='বিস্তারিত দেখুন'><i class='ti tabler-eye'></i></a>";
         if (!empty($row['attachment'])) {
             $action .= "<a target='_blank' href='uploads/{$row['attachment']}' class='action-icon icon-attach' title='সংযুক্তি দেখুন'><i class='ti tabler-paperclip'></i></a>";
         }

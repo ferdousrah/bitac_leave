@@ -274,7 +274,8 @@ $menuslug = htmlspecialchars($_GET['menuslug'] ?? 'office-notice');
                         <td><?= htmlspecialchars($leaveType) ?></td>
                         <td><?= htmlspecialchars($officeNoticeDate) ?></td>
                         <td class="text-center">
-                            <a href="../../api/reports/leave-notice.php?menuslug=allowed-leave-applications&leaveApplicationID=<?= $dataRow['dataID'] ?>" target="_blank" class="btn btn-sm btn-label-primary">
+                            <a href="javascript:void(0);" class="btn btn-sm btn-label-primary notice-view-btn"
+                               data-url="../../api/reports/leave-notice.php?menuslug=allowed-leave-applications&leaveApplicationID=<?= $dataRow['dataID'] ?>">
                                 <i class="ti tabler-eye me-1"></i>দেখুন
                             </a>
                         </td>
@@ -286,6 +287,51 @@ $menuslug = htmlspecialchars($_GET['menuslug'] ?? 'office-notice');
     </div>
 </div>
 <?php endif; ?>
+
+<!-- ══════════════════════════════════════════════════════
+     Notice preview modal — same-page popup with iframe
+     (identical pattern to views/reports/leave-self.php)
+═══════════════════════════════════════════════════════ -->
+<style>
+#noticeReportModal .modal-dialog { max-width: 95vw; margin: 1rem auto; }
+#noticeReportModal .modal-content { height: calc(100vh - 2rem); display: flex; flex-direction: column; }
+#noticeReportModal .modal-body { flex: 1 1 auto; min-height: 0; padding: 0; position: relative; background: #f5f7fa; }
+#noticeReportModal #noticeIframe { width: 100%; height: 100%; border: 0; background: #fff; display: block; }
+#noticeReportModal #noticeLoader {
+    position: absolute; inset: 0;
+    background: #fff; z-index: 2;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    transition: opacity 0.2s ease;
+}
+#noticeReportModal #noticeLoader.d-none { display: none !important; }
+</style>
+<div class="modal fade" id="noticeReportModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2 px-3" style="background:linear-gradient(155deg,#0e1e34 0%,#1e3a5f 100%);color:#fff;border:none;">
+                <h5 class="modal-title mb-0" style="color:#fff;font-size:1rem;">
+                    <i class="ti tabler-file-description me-2"></i>অফিস আদেশ
+                </h5>
+                <div class="ms-auto d-flex align-items-center gap-2">
+                    <a href="#" id="noticeDownloadBtn" target="_blank" class="btn btn-sm" style="background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.25);">
+                        <i class="ti tabler-external-link me-1"></i>নতুন ট্যাবে খুলুন
+                    </a>
+                    <button type="button" class="btn btn-sm" data-bs-dismiss="modal" style="background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.25);">
+                        <i class="ti tabler-x"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div id="noticeLoader">
+                    <div class="spinner-border text-primary mb-2" role="status"></div>
+                    <div class="text-muted small">অফিস আদেশ লোড হচ্ছে...</div>
+                </div>
+                <iframe id="noticeIframe" src="about:blank"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
 
 <?php require_once(__DIR__ . '/../../includes/footer_vuexy.php'); ?>
 
@@ -337,5 +383,32 @@ $(document).ready(function() {
         order: [[0, 'asc']]
     });
     <?php endif; ?>
+
+    // ── Notice preview modal wiring ─────────────────────────
+    var $nModal  = $('#noticeReportModal');
+    var $nIframe = $('#noticeIframe');
+    var $nLoader = $('#noticeLoader');
+    var $nDlBtn  = $('#noticeDownloadBtn');
+
+    // Delegated — rows are re-rendered by DataTables pagination
+    $(document).on('click', '.notice-view-btn', function() {
+        var url = $(this).data('url');
+        if (!url) return;
+        $nLoader.removeClass('d-none');
+        $nIframe[0].src = url;
+        $nDlBtn.attr('href', url);
+        $nModal.modal('show');
+    });
+
+    $nIframe[0].addEventListener('load', function() {
+        if ($nIframe[0].src && $nIframe[0].src.indexOf('about:blank') === -1) {
+            $nLoader.addClass('d-none');
+        }
+    });
+
+    $nModal.on('hidden.bs.modal', function() {
+        $nIframe[0].src = 'about:blank';
+        $nLoader.removeClass('d-none');
+    });
 });
 </script>

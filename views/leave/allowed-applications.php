@@ -235,6 +235,51 @@ while ($l = mysqli_fetch_assoc($ltQ)) {
     </div>
 </div>
 
+<!-- ══════════════════════════════════════════════════════
+     Document preview modal — same-page popup with iframe
+     (identical pattern to views/reports/leave-self.php)
+═══════════════════════════════════════════════════════ -->
+<style>
+#appDocModal .modal-dialog { max-width: 95vw; margin: 1rem auto; }
+#appDocModal .modal-content { height: calc(100vh - 2rem); display: flex; flex-direction: column; }
+#appDocModal .modal-body { flex: 1 1 auto; min-height: 0; padding: 0; position: relative; background: #f5f7fa; }
+#appDocModal #appDocIframe { width: 100%; height: 100%; border: 0; background: #fff; display: block; }
+#appDocModal #appDocLoader {
+    position: absolute; inset: 0;
+    background: #fff; z-index: 2;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    transition: opacity 0.2s ease;
+}
+#appDocModal #appDocLoader.d-none { display: none !important; }
+</style>
+<div class="modal fade" id="appDocModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2 px-3" style="background:linear-gradient(155deg,#0e1e34 0%,#1e3a5f 100%);color:#fff;border:none;">
+                <h5 class="modal-title mb-0" style="color:#fff;font-size:1rem;">
+                    <i class="ti tabler-file-text me-2"></i><span id="appDocTitle">আবেদনপত্র</span>
+                </h5>
+                <div class="ms-auto d-flex align-items-center gap-2">
+                    <a href="#" id="appDocDownloadBtn" target="_blank" class="btn btn-sm" style="background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.25);">
+                        <i class="ti tabler-external-link me-1"></i>নতুন ট্যাবে খুলুন
+                    </a>
+                    <button type="button" class="btn btn-sm" data-bs-dismiss="modal" style="background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.25);">
+                        <i class="ti tabler-x"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div id="appDocLoader">
+                    <div class="spinner-border text-primary mb-2" role="status"></div>
+                    <div class="text-muted small">ডকুমেন্ট লোড হচ্ছে...</div>
+                </div>
+                <iframe id="appDocIframe" src="about:blank"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+
 <?php require_once(__DIR__ . '/../../includes/footer_vuexy.php'); ?>
 
 <script>
@@ -559,5 +604,33 @@ $(document).ready(function() {
     if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
         $('[data-bs-toggle="tooltip"]').each(function(){ new bootstrap.Tooltip(this); });
     }
+
+    // ── Document preview modal wiring ──────────────────────
+    var $adModal  = $('#appDocModal');
+    var $adIframe = $('#appDocIframe');
+    var $adLoader = $('#appDocLoader');
+    var $adDlBtn  = $('#appDocDownloadBtn');
+
+    // Delegated — dropdown rows re-render on every DataTables draw (all 4 tabs)
+    $(document).on('click', '.app-doc-view', function() {
+        var url = $(this).data('url');
+        if (!url) return;
+        $('#appDocTitle').text($(this).data('title') || 'আবেদনপত্র');
+        $adLoader.removeClass('d-none');
+        $adIframe[0].src = url;
+        $adDlBtn.attr('href', url);
+        $adModal.modal('show');
+    });
+
+    $adIframe[0].addEventListener('load', function() {
+        if ($adIframe[0].src && $adIframe[0].src.indexOf('about:blank') === -1) {
+            $adLoader.addClass('d-none');
+        }
+    });
+
+    $adModal.on('hidden.bs.modal', function() {
+        $adIframe[0].src = 'about:blank';
+        $adLoader.removeClass('d-none');
+    });
 });
 </script>

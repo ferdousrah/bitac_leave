@@ -163,7 +163,7 @@ $menuslug = htmlspecialchars($_GET['menuslug'] ?? 'leave-report');
             <!-- Popup info note -->
             <div class="popup-info-banner">
                 <i class="ti tabler-info-circle"></i>
-                <div><strong>নোট:</strong> রিপোর্টটি একটি নতুন ট্যাবে PDF ফরম্যাটে খুলবে।</div>
+                <div><strong>নোট:</strong> রিপোর্টটি এই পাতাতেই একটি পপআপ উইন্ডোতে খুলবে।</div>
             </div>
 
             <!-- Form Actions -->
@@ -179,6 +179,51 @@ $menuslug = htmlspecialchars($_GET['menuslug'] ?? 'leave-report');
     </div>
 </div>
 
+<!-- ══════════════════════════════════════════════════════
+     Report preview modal — same-page popup with iframe
+     (identical pattern to views/reports/leave-self.php)
+═══════════════════════════════════════════════════════ -->
+<style>
+#leaveReportModal .modal-dialog { max-width: 95vw; margin: 1rem auto; }
+#leaveReportModal .modal-content { height: calc(100vh - 2rem); display: flex; flex-direction: column; }
+#leaveReportModal .modal-body { flex: 1 1 auto; min-height: 0; padding: 0; position: relative; background: #f5f7fa; }
+#leaveReportModal #reportIframe { width: 100%; height: 100%; border: 0; background: #fff; display: block; }
+#leaveReportModal #reportLoader {
+    position: absolute; inset: 0;
+    background: #fff; z-index: 2;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    transition: opacity 0.2s ease;
+}
+#leaveReportModal #reportLoader.d-none { display: none !important; }
+</style>
+<div class="modal fade" id="leaveReportModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2 px-3" style="background:linear-gradient(155deg,#0e1e34 0%,#1e3a5f 100%);color:#fff;border:none;">
+                <h5 class="modal-title mb-0" style="color:#fff;font-size:1rem;">
+                    <i class="ti tabler-report-analytics me-2"></i>লিভ রিপোর্ট
+                </h5>
+                <div class="ms-auto d-flex align-items-center gap-2">
+                    <a href="#" id="reportDownloadBtn" target="_blank" class="btn btn-sm" style="background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.25);">
+                        <i class="ti tabler-external-link me-1"></i>নতুন ট্যাবে খুলুন
+                    </a>
+                    <button type="button" class="btn btn-sm" data-bs-dismiss="modal" style="background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.25);">
+                        <i class="ti tabler-x"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div id="reportLoader">
+                    <div class="spinner-border text-primary mb-2" role="status"></div>
+                    <div class="text-muted small">রিপোর্ট লোড হচ্ছে...</div>
+                </div>
+                <iframe id="reportIframe" src="about:blank"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+
 <?php require_once(__DIR__ . '/../../includes/footer_vuexy.php'); ?>
 
 <script>
@@ -191,6 +236,11 @@ $(document).ready(function() {
         theme: 'bootstrap-5'
     });
 
+    var $modal  = $('#leaveReportModal');
+    var $iframe = $('#reportIframe');
+    var $loader = $('#reportLoader');
+    var $dlBtn  = $('#reportDownloadBtn');
+
     $('#leaveReportForm').on('submit', function(e) {
         e.preventDefault();
         var empID   = $('#employeeID').val();
@@ -200,7 +250,24 @@ $(document).ready(function() {
                 + '?employeeID=' + encodeURIComponent(empID)
                 + '&leaveTypeInTwo=' + encodeURIComponent(ltInTwo)
                 + '&year=' + encodeURIComponent(yr);
-        window.open(url, '_blank');
+
+        $loader.removeClass('d-none');
+        $iframe[0].src = url;
+        $dlBtn.attr('href', url);
+        $modal.modal('show');
+    });
+
+    // Hide loader once the PDF/viewer inside the iframe has loaded
+    $iframe[0].addEventListener('load', function() {
+        if ($iframe[0].src && $iframe[0].src.indexOf('about:blank') === -1) {
+            $loader.addClass('d-none');
+        }
+    });
+
+    // Reset for next open
+    $modal.on('hidden.bs.modal', function() {
+        $iframe[0].src = 'about:blank';
+        $loader.removeClass('d-none');
     });
 });
 </script>

@@ -236,9 +236,9 @@ while ($r = mysqli_fetch_assoc($dataRes)) {
             $statusCell = '<span class="status-pill status-pending">—</span>';
     }
 
-    // Actions cell — link to application details
-    $actionCell = '<a target="_blank" href="application-details.php?menuslug=leave-approval&leaveApplicationID='
-                . (int)$r['applicationID'] . '" class="action-icon icon-view" title="বিস্তারিত দেখুন">'
+    // Actions cell — opens the application in the same-page preview modal
+    $actionCell = '<a href="javascript:void(0);" data-url="application-details.php?menuslug=leave-approval&leaveApplicationID='
+                . (int)$r['applicationID'] . '" class="action-icon icon-view app-doc-view" title="বিস্তারিত দেখুন">'
                 . '<i class="ti tabler-eye"></i></a>';
 
     $data[] = [
