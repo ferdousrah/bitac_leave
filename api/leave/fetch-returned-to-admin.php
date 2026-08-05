@@ -137,14 +137,35 @@ while ($r = mysqli_fetch_assoc($dataRes)) {
                    . ($empSec ? '<div class="emp-sub-light">' . htmlspecialchars($empSec) . '</div>' : '')
                    . '</div></div>';
 
-    // Requested leave
+    // Requested leave — multi-segment aware.
     $days = dateDiffInDays($r['dateFrom'], $r['dateTo']) + 1;
+    $__aid = (int)$r['applicationID'];
+    $__reqSegs = [];
+    $__segRes = mysqli_query($con, "SELECT s.days, lt.leaveTitle
+                                     FROM leave_application_segments s
+                                     LEFT JOIN leave_types lt ON s.leaveType = lt.leaveID
+                                     WHERE s.applicationID = $__aid
+                                       AND (s.kind = 'proposed' OR s.kind IS NULL)
+                                     ORDER BY s.serial ASC, s.dataID ASC");
+    if ($__segRes) while ($__sr = mysqli_fetch_assoc($__segRes)) $__reqSegs[] = $__sr;
+
     $requestedHtml = '<div class="date-range"><i class="ti tabler-calendar"></i><span>'
                    . banglaNumber(date('d/m/Y', strtotime($r['dateFrom'])))
                    . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>'
-                   . banglaNumber(date('d/m/Y', strtotime($r['dateTo']))) . '</span></div>'
-                   . '<div class="leave-meta"><span class="days-pill">' . banglaNumber($days) . ' দিন</span>'
-                   . ' <span class="leave-type-chip">' . htmlspecialchars($r['leaveTitle'] ?? '') . '</span></div>';
+                   . banglaNumber(date('d/m/Y', strtotime($r['dateTo']))) . '</span></div>';
+    if (count($__reqSegs) > 1) {
+        $__reqTotal = array_sum(array_column($__reqSegs, 'days'));
+        $__parts = [];
+        foreach ($__reqSegs as $__sg) {
+            $__parts[] = '<span class="seg-pill">' . banglaNumber((int)$__sg['days']) . ' দিন '
+                       . htmlspecialchars($__sg['leaveTitle'] ?? 'অজানা') . '</span>';
+        }
+        $requestedHtml .= '<div class="leave-meta"><span class="days-pill">মোট ' . banglaNumber($__reqTotal) . ' দিন</span></div>'
+                        . '<div class="seg-list">' . implode(' ', $__parts) . '</div>';
+    } else {
+        $requestedHtml .= '<div class="leave-meta"><span class="days-pill">' . banglaNumber($days) . ' দিন</span>'
+                        . ' <span class="leave-type-chip">' . htmlspecialchars($r['leaveTitle'] ?? '') . '</span></div>';
+    }
 
     // Returned-by cell
     $rBy    = trim($r['returnedByName']  ?? '');
