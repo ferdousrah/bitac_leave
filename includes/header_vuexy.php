@@ -7,10 +7,14 @@ $start = microtime(true);
 // Include connection file
 require_once(__DIR__ . '/../config/connection.php');
 
-// Check if the user is logged in, otherwise redirect to the login page
+// Check if the user is logged in, otherwise redirect to the login page.
+// Absolute URL via BASE_URL — a relative 'index.php' resolves against the
+// CURRENT page's directory (e.g. views/leave/index.php → 404) when the
+// session expires deep inside /views/**.
 if (!isset($_SESSION['username'])) {
-    echo "<script>alert('You are not logged in! Please log in first.')</script>";
-    echo "<script>window.location='index.php'</script>";
+    $loginURL = (defined('BASE_URL') ? BASE_URL : '') . '/index.php';
+    echo "<script>alert('আপনার সেশনের মেয়াদ শেষ হয়েছে। অনুগ্রহ করে পুনরায় লগইন করুন।')</script>";
+    echo "<script>window.location='" . htmlspecialchars($loginURL, ENT_QUOTES) . "'</script>";
     exit;
 }
 
@@ -51,10 +55,11 @@ $stmt->execute();
 $getUserInfoQRW = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
-// Ensure we have user data, redirect to login if not
+// Ensure we have user data, redirect to login if not (absolute URL — see above)
 if (!$getUserInfoQRW) {
-    echo "<script>alert('User session invalid! Please log in again.')</script>";
-    echo "<script>window.location='index.php'</script>";
+    $loginURL = (defined('BASE_URL') ? BASE_URL : '') . '/index.php';
+    echo "<script>alert('সেশন অবৈধ। অনুগ্রহ করে পুনরায় লগইন করুন।')</script>";
+    echo "<script>window.location='" . htmlspecialchars($loginURL, ENT_QUOTES) . "'</script>";
     exit;
 }
 

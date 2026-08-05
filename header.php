@@ -7,10 +7,13 @@ $start = microtime(true);
 // Include connection file
 include('connection.php');
 
-// Check if the user is logged in, otherwise redirect to the login page
+// Check if the user is logged in, otherwise redirect to the login page.
+// Absolute URL via BASE_URL — this legacy header is also included from
+// pages inside /views/**, where a relative 'index.php' would 404.
 if (!isset($_SESSION['username'])) {
-    echo "<script>alert('You are not logged in! Please log in first.')</script>";
-    echo "<script>window.location='index.php'</script>";
+    $loginURL = (defined('BASE_URL') ? BASE_URL : '') . '/index.php';
+    echo "<script>alert('আপনার সেশনের মেয়াদ শেষ হয়েছে। অনুগ্রহ করে পুনরায় লগইন করুন।')</script>";
+    echo "<script>window.location='" . htmlspecialchars($loginURL, ENT_QUOTES) . "'</script>";
     exit;
 }
 
