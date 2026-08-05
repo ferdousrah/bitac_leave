@@ -7,6 +7,11 @@ $start = microtime(true);
 // Include connection file
 require_once(__DIR__ . '/../config/connection.php');
 
+// Try to silently restore an expired session from the remember-me cookie
+// before bouncing the user to the login page.
+require_once(__DIR__ . '/remember-me.php');
+remember_attempt($con);
+
 // Check if the user is logged in, otherwise redirect to the login page.
 // Absolute URL via BASE_URL — a relative 'index.php' resolves against the
 // CURRENT page's directory (e.g. views/leave/index.php → 404) when the

@@ -1,5 +1,14 @@
 <?php
+session_start();
 include('connection.php');
+
+// Already logged in (or restorable from the remember-me cookie)? Skip the
+// login form entirely and land on the dashboard.
+require_once(__DIR__ . '/includes/remember-me.php');
+if (remember_attempt($con)) {
+    header('Location: ' . (defined('BASE_URL') ? BASE_URL : '.') . '/dashboard?menuslug=dashboard');
+    exit;
+}
 
 function getClientIP() {
     if (isset($_SERVER['HTTP_CLIENT_IP']) && !empty($_SERVER['HTTP_CLIENT_IP'])) {
@@ -18,6 +27,10 @@ $clientIP = getClientIP();
 
 $assetURL = defined('BASE_URL') ? BASE_URL . '/vuexy-assets' : 'vuexy-assets';
 $logoURL  = defined('BASE_URL') ? BASE_URL . '/uploads/bitac-logo-inner.png' : 'uploads/bitac-logo-inner.png';
+
+// Remembered username preference — survives explicit logout so the form
+// comes back pre-filled with the toggle already on.
+$rememberedUser = trim($_COOKIE['bitac_login_user'] ?? '');
 
 // Optional photo for the left panel — drop any image at uploads/login-side.jpg
 // (or .png / .webp) and it replaces the abstract gradient automatically.
@@ -367,6 +380,7 @@ foreach (['login-side.jpg', 'login-side.jpeg', 'login-side.png', 'login-side.web
                     <div class="input-box" onclick="document.getElementById('username').focus()">
                         <label for="username">ইউজারনেম</label>
                         <input type="text" name="username" id="username"
+                               value="<?= htmlspecialchars($rememberedUser) ?>"
                                placeholder="আপনার ইউজারনেম" autocomplete="username" required>
                     </div>
 
@@ -384,7 +398,7 @@ foreach (['login-side.jpg', 'login-side.jpeg', 'login-side.png', 'login-side.web
                     <div class="remember-row">
                         <span class="lbl">লগইন তথ্য মনে রাখুন</span>
                         <label class="switch">
-                            <input type="checkbox" name="rememberme" id="rememberme">
+                            <input type="checkbox" name="rememberme" id="rememberme" <?= $rememberedUser !== '' ? 'checked' : '' ?>>
                             <span class="track"></span>
                         </label>
                     </div>

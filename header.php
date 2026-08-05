@@ -7,6 +7,11 @@ $start = microtime(true);
 // Include connection file
 include('connection.php');
 
+// Try to silently restore an expired session from the remember-me cookie
+// before bouncing the user to the login page.
+require_once(__DIR__ . '/includes/remember-me.php');
+remember_attempt($con);
+
 // Check if the user is logged in, otherwise redirect to the login page.
 // Absolute URL via BASE_URL — this legacy header is also included from
 // pages inside /views/**, where a relative 'index.php' would 404.

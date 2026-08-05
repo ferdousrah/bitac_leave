@@ -126,6 +126,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 ]);
             }
 
+            // "লগইন তথ্য মনে রাখুন" — issue a 30-day remember-me token so
+            // the session silently restores after PHP's session GC expires it.
+            // A separate lightweight preference cookie keeps the username +
+            // toggle state pre-filled on the login form after an explicit
+            // logout (the auth token itself is cleared on logout — only the
+            // harmless username survives).
+            if (!empty($_POST['rememberme'])) {
+                require_once(__DIR__ . '/includes/remember-me.php');
+                remember_issue($con, (int)$user['dataID']);
+                setcookie('bitac_login_user', $username, [
+                    'expires'  => time() + 30 * 86400,
+                    'path'     => '/',
+                    'secure'   => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+                    'httponly' => true,
+                    'samesite' => 'Lax',
+                ]);
+            } else {
+                // Toggle off on a fresh login → drop the stored preference
+                setcookie('bitac_login_user', '', ['expires' => time() - 3600, 'path' => '/']);
+            }
+
             // Successful login
             echo 1;
         } else {
