@@ -31,8 +31,11 @@ function render_segment_history_timeline($con, $applicationID, array $leaveTypeM
     $applicationID = (int)$applicationID;
 
     // ── History rows, chronological ────────────────────────────────
+    // actorEmpID is what identifies the desk — signatoryLevel alone is not
+    // reliable (save-segments.php resolves the center-admin branch first, so
+    // a supervisor who also carries isCenterAdmin gets logged with level 0).
     $stmt = mysqli_prepare($con,
-        "SELECT h.*, el.employee_name
+        "SELECT h.*, el.employee_name, ul.employee_id AS actorEmpID
          FROM leave_segment_history h
          LEFT JOIN user_list     ul ON h.changedBy  = ul.dataID
          LEFT JOIN employee_list el ON ul.employee_id = el.id
@@ -44,23 +47,42 @@ function render_segment_history_timeline($con, $applicationID, array $leaveTypeM
     mysqli_stmt_close($stmt);
     if (empty($rows)) return '';
 
-    // ── Chain map: serial => ['isSupervisor'=>x, 'name'=>y] ────────
-    $chain = [];
+    // Applicant, so their own edits are never mistaken for a desk action
+    $applicantID = 0;
+    $aStmt = mysqli_prepare($con, "SELECT applicantID FROM leave_applications WHERE dataID = ? LIMIT 1");
+    mysqli_stmt_bind_param($aStmt, 'i', $applicationID);
+    mysqli_stmt_execute($aStmt);
+    if ($aRow = mysqli_fetch_assoc(mysqli_stmt_get_result($aStmt))) {
+        $applicantID = (int)$aRow['applicantID'];
+    }
+    mysqli_stmt_close($aStmt);
+
+    // ── Chain maps: by serial AND by employee id ───────────────────
+    $chain = [];      // serial      => meta
+    $chainByEmp = []; // employee_id => meta
     $cStmt = mysqli_prepare($con,
-        "SELECT ldfa.serial, ldfa.isSupervisor, el.employee_name, jt.job_title_name
+        "SELECT ldfa.serial, ldfa.isSupervisor, ldfa.signatory, el.employee_name, jt.job_title_name
          FROM leave_data_for_approval ldfa
          LEFT JOIN employee_list el ON ldfa.signatory   = el.id
          LEFT JOIN job_title     jt ON el.designation   = jt.id
-         WHERE ldfa.leaveApplicationID = ?");
+         WHERE ldfa.leaveApplicationID = ?
+         ORDER BY ldfa.serial ASC");
     mysqli_stmt_bind_param($cStmt, 'i', $applicationID);
     mysqli_stmt_execute($cStmt);
     $cRes = mysqli_stmt_get_result($cStmt);
     while ($c = mysqli_fetch_assoc($cRes)) {
-        $chain[(int)$c['serial']] = [
+        $meta = [
+            'serial'       => (int)$c['serial'],
             'isSupervisor' => (int)$c['isSupervisor'] === 1,
             'name'         => trim($c['employee_name'] ?? ''),
             'title'        => trim($c['job_title_name'] ?? ''),
         ];
+        $chain[(int)$c['serial']] = $meta;
+        $emp = (int)$c['signatory'];
+        // Supervisor row wins if the same person appears twice in the chain
+        if ($emp && (!isset($chainByEmp[$emp]) || $meta['isSupervisor'])) {
+            $chainByEmp[$emp] = $meta;
+        }
     }
     mysqli_stmt_close($cStmt);
 
@@ -97,6 +119,7 @@ function render_segment_history_timeline($con, $applicationID, array $leaveTypeM
         if (!isset($batches[$key])) {
             $batches[$key] = [
                 'level'   => (int)($r['signatoryLevel'] ?? 0),
+                'actor'   => (int)($r['actorEmpID'] ?? 0),
                 'name'    => $pickName($r),
                 'when'    => $r['changedAt'] ?? '',
                 'note'    => $r['note'] ?? '',
@@ -110,6 +133,27 @@ function render_segment_history_timeline($con, $applicationID, array $leaveTypeM
     }
 
     // ── Replay to snapshot the segment set after each batch ────────
+    // The applicant's history rows reference the 'requested' segment ids while
+    // every later desk edits the 'proposed' rows — different dataIDs for the
+    // same logical segment. Keying purely on segmentID therefore left the
+    // applicant's original entry alive forever, so a supervisor who split one
+    // 2-day segment into two 1-day ones showed three chips totalling 4 days.
+    // When the id is unknown we fall back to matching the operation's oldData
+    // against the current state.
+    $samePayload = function ($a, $b) {
+        return $a && $b
+            && (int)$a['leaveType'] === (int)$b['leaveType']
+            && $a['dateFrom'] === $b['dateFrom']
+            && $a['dateTo']   === $b['dateTo']
+            && (int)$a['days'] === (int)$b['days'];
+    };
+    $findByPayload = function ($state, $needle) use ($samePayload) {
+        foreach ($state as $k => $v) {
+            if ($samePayload($v, $needle)) return $k;
+        }
+        return null;
+    };
+
     $state = [];   // segmentID => ['leaveType','dateFrom','dateTo','days']
     $stages = [];
     foreach ($batches as $b) {
@@ -120,13 +164,27 @@ function render_segment_history_timeline($con, $applicationID, array $leaveTypeM
             $old = $decodeSeg($op['oldData'] ?? null);
             switch ($op['action']) {
                 case 'created':
-                    if ($sid && $new) { $state[$sid] = $new; $added++; }
+                    if ($new) { $state[$sid ?: ('n' . count($state))] = $new; $added++; }
                     break;
                 case 'edited':
-                    if ($sid && $new) { $state[$sid] = $new; $editedN++; }
+                    if ($new) {
+                        if ($sid && isset($state[$sid])) {
+                            $state[$sid] = $new;
+                        } else {
+                            $prev = $findByPayload($state, $old);
+                            if ($prev !== null) unset($state[$prev]);
+                            $state[$sid ?: ('n' . count($state))] = $new;
+                        }
+                        $editedN++;
+                    }
                     break;
                 case 'removed':
-                    if ($sid) unset($state[$sid]);
+                    if ($sid && isset($state[$sid])) {
+                        unset($state[$sid]);
+                    } else {
+                        $prev = $findByPayload($state, $old);
+                        if ($prev !== null) unset($state[$prev]);
+                    }
                     if ($old) $removedChips[] = $old;
                     break;
             }
@@ -153,23 +211,35 @@ function render_segment_history_timeline($con, $applicationID, array $leaveTypeM
              . ' · ' . $from . ' → ' . $to . ' (' . $days . ' দিন)</span>';
     };
 
-    $deskMeta = function ($level, $note) use ($chain) {
-        if ($level === 0) {
-            if (stripos((string)$note, 'applicant') !== false) {
-                return ['আবেদনকারীর জমা', '#e8e5ff', '#5648c4', 'tabler-user'];
+    // Resolve the desk from WHO acted, falling back to signatoryLevel.
+    // signatoryLevel is 0 both for the center admin and for a supervisor who
+    // also holds isCenterAdmin (save-segments.php checks that branch first),
+    // so trusting it alone mislabels supervisor edits as admin edits.
+    $deskMeta = function ($level, $note, $actorEmp) use ($chain, $chainByEmp, $applicantID) {
+        if (stripos((string)$note, 'applicant') !== false
+            || ($actorEmp && $applicantID && $actorEmp === $applicantID)) {
+            return ['আবেদনকারীর জমা', '#e8e5ff', '#5648c4', 'tabler-user'];
+        }
+        $meta = null;
+        if ($actorEmp && isset($chainByEmp[$actorEmp])) {
+            $meta = $chainByEmp[$actorEmp];
+        } elseif ($level > 0 && isset($chain[$level])) {
+            $meta = $chain[$level];
+        }
+        if ($meta) {
+            if (!empty($meta['isSupervisor'])) {
+                return ['সুপারিশকারীর প্রস্তাব', '#d1f4ff', '#0883a3', 'tabler-clipboard-check'];
             }
-            return ['প্রশাসনিক ডেস্ক (ছুটি সম্পাদনা)', '#ede5fa', '#5e3eaa', 'tabler-user-edit'];
+            return ['স্বাক্ষরকারীর প্রস্তাব (ধাপ ' . banglaNumber((int)$meta['serial']) . ')',
+                    '#d8f5e3', '#1a7e44', 'tabler-circle-check'];
         }
-        if (!empty($chain[$level]['isSupervisor'])) {
-            return ['সুপারিশকারীর প্রস্তাব', '#d1f4ff', '#0883a3', 'tabler-clipboard-check'];
-        }
-        return ['স্বাক্ষরকারীর প্রস্তাব (ধাপ ' . banglaNumber($level) . ')', '#d8f5e3', '#1a7e44', 'tabler-circle-check'];
+        return ['প্রশাসনিক ডেস্ক (ছুটি সম্পাদনা)', '#ede5fa', '#5e3eaa', 'tabler-user-edit'];
     };
 
     // ── Render ─────────────────────────────────────────────────────
     $html = '<div class="seg-timeline">';
     foreach ($stages as $i => $s) {
-        list($deskLabel, $bg, $fg, $icon) = $deskMeta($s['level'], $s['note']);
+        list($deskLabel, $bg, $fg, $icon) = $deskMeta($s['level'], $s['note'], (int)($s['actor'] ?? 0));
         $when  = $s['when'] ? banglaNumber(date('d/m/Y H:i', strtotime($s['when']))) : '';
         $total = 0;
         foreach ($s['snapshot'] as $sg) $total += (int)($sg['days'] ?? 0);
