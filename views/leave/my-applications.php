@@ -229,6 +229,7 @@ while ($l = mysqli_fetch_assoc($ltQ)) {
                                 <th>আবেদনকারী</th>
                                 <th>শাখা ও কেন্দ্র</th>
                                 <th>চাহিত ছুটি</th>
+                                <th>প্রস্তাবিত ছুটি</th>
                                 <th>না মঞ্জুরের তারিখ</th>
                                 <th>কারণ</th>
                                 <th class="text-center">কার্যাবলী</th>
@@ -588,11 +589,12 @@ $(document).ready(function() {
         { data: "applicant_cell", orderable: false },
         { data: "section_center", orderable: false },
         { data: "requested",      orderable: false },
+        { data: "proposed",       orderable: false },
         { data: "declined_at",    orderable: false },
         { data: "reason",         orderable: false },
         { data: "action",         orderable: false, searchable: false, className: 'text-center' }
     ];
-    var declinedLabels = ['ক্রমিক','আবেদনকারী','শাখা ও কেন্দ্র','চাহিত ছুটি','না মঞ্জুরের তারিখ','কারণ','কার্যাবলী'];
+    var declinedLabels = ['ক্রমিক','আবেদনকারী','শাখা ও কেন্দ্র','চাহিত ছুটি','প্রস্তাবিত ছুটি','না মঞ্জুরের তারিখ','কারণ','কার্যাবলী'];
     var declinedLang = Object.assign({}, dtLang, {
         emptyTable: '<div class="empty-state-rich"><i class="ti tabler-circle-x"></i><div class="empty-title">কোনো অননুমোদিত আবেদন নেই</div><div class="empty-subtitle">আপনি এখনো কোনো আবেদন না মঞ্জুর করেননি</div></div>'
     });

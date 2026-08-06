@@ -52,6 +52,7 @@ LEFT  JOIN job_title    jt  ON el.designation     = jt.id
 LEFT  JOIN sections     s   ON el.section_id      = s.id
 LEFT  JOIN organization o   ON el.organization_id = o.id
 LEFT  JOIN leave_types  lt  ON la.leaveType       = lt.leaveID
+LEFT  JOIN leave_types  alt ON la.approvedLeaveType = alt.leaveID
 WHERE la.status = 2 AND la.declinedBy = ?";
 
 $countStmt = mysqli_prepare($con, "SELECT COUNT(*) c $baseFrom");
@@ -67,6 +68,8 @@ SELECT
     la.submitDate          AS submitDate,
     la.dateFrom            AS dateFrom,
     la.dateTo              AS dateTo,
+    la.approvedDateFrom    AS approvedDateFrom,
+    la.approvedDateTo      AS approvedDateTo,
     la.cancellationReasion AS reason,
     la.cancellationDate    AS declinedAt,
     el.employee_name       AS employee_name,
@@ -75,7 +78,8 @@ SELECT
     jt.job_title_name      AS job_title_name,
     s.section_name         AS section_name,
     o.organization_name    AS organization_name,
-    lt.leaveTitle          AS leaveTitle
+    lt.leaveTitle          AS leaveTitle,
+    alt.leaveTitle         AS approvedLeaveTitle
 $baseFrom
 ORDER BY la.cancellationDate DESC, la.dataID DESC
 LIMIT $start, $length";
@@ -130,34 +134,67 @@ while ($r = mysqli_fetch_assoc($dataRes)) {
         $secCenter .= '<span class="meta-chip center mt-1"><i class="ti tabler-map-pin"></i>' . htmlspecialchars($empOrg) . '</span>';
     }
 
-    // Requested leave — multi-segment aware, same convention as the other tabs
-    $days = dateDiffInDays($r['dateFrom'], $r['dateTo']) + 1;
-    $aid  = (int)$r['applicationID'];
-    $segs = [];
-    $segRes = mysqli_query($con, "SELECT s.days, lt.leaveTitle
+    // Segments split by kind, same convention as the other approval queues:
+    // 'requested' backs the চাহিত column, 'proposed' the প্রস্তাবিত one, and
+    // either side falls back to the other when only one kind was recorded.
+    $aid = (int)$r['applicationID'];
+    $reqSegs = []; $propSegs = [];
+    $segRes = mysqli_query($con, "SELECT s.kind, s.days, lt.leaveTitle
                                    FROM leave_application_segments s
                                    LEFT JOIN leave_types lt ON s.leaveType = lt.leaveID
                                    WHERE s.applicationID = $aid
-                                     AND (s.kind = 'proposed' OR s.kind IS NULL)
-                                   ORDER BY s.serial ASC, s.dataID ASC");
-    if ($segRes) while ($sr = mysqli_fetch_assoc($segRes)) $segs[] = $sr;
+                                   ORDER BY s.kind ASC, s.serial ASC, s.dataID ASC");
+    if ($segRes) while ($sr = mysqli_fetch_assoc($segRes)) {
+        if (($sr['kind'] ?? 'requested') === 'requested') $reqSegs[] = $sr;
+        else                                              $propSegs[] = $sr;
+    }
+    if (empty($reqSegs)  && !empty($propSegs)) $reqSegs  = $propSegs;
+    if (empty($propSegs) && !empty($reqSegs))  $propSegs = $reqSegs;
 
+    $segChips = function (array $segs) {
+        $parts = [];
+        foreach ($segs as $sg) {
+            $parts[] = '<span class="seg-pill">' . banglaNumber((int)$sg['days']) . ' দিন '
+                     . htmlspecialchars($sg['leaveTitle'] ?? 'অজানা') . '</span>';
+        }
+        return '<div class="seg-list">' . implode(' ', $parts) . '</div>';
+    };
+
+    // চাহিত ছুটি
+    $days = dateDiffInDays($r['dateFrom'], $r['dateTo']) + 1;
     $requestedHtml = '<div class="date-range"><i class="ti tabler-calendar"></i><span>'
                    . banglaNumber(date('d/m/Y', strtotime($r['dateFrom'])))
                    . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>'
                    . banglaNumber(date('d/m/Y', strtotime($r['dateTo']))) . '</span></div>';
-    if (count($segs) > 1) {
-        $segTotal = array_sum(array_column($segs, 'days'));
-        $segParts = [];
-        foreach ($segs as $sg) {
-            $segParts[] = '<span class="seg-pill">' . banglaNumber((int)$sg['days']) . ' দিন '
-                        . htmlspecialchars($sg['leaveTitle'] ?? 'অজানা') . '</span>';
-        }
-        $requestedHtml .= '<div class="leave-meta"><span class="days-pill">মোট ' . banglaNumber($segTotal) . ' দিন</span></div>'
-                        . '<div class="seg-list">' . implode(' ', $segParts) . '</div>';
+    if (count($reqSegs) > 1) {
+        $reqTotal = array_sum(array_column($reqSegs, 'days'));
+        $requestedHtml .= '<div class="leave-meta"><span class="days-pill">মোট ' . banglaNumber($reqTotal) . ' দিন</span></div>'
+                        . $segChips($reqSegs);
     } else {
         $requestedHtml .= '<div class="leave-meta"><span class="days-pill">' . banglaNumber($days) . ' দিন</span>'
                         . ' <span class="leave-type-chip">' . htmlspecialchars($r['leaveTitle'] ?? '') . '</span></div>';
+    }
+
+    // প্রস্তাবিত ছুটি — only when a proposal was actually recorded before the
+    // application was declined.
+    $hasProposed = !empty($r['approvedDateFrom']) && !empty($r['approvedDateTo']);
+    if ($hasProposed) {
+        $pDays = dateDiffInDays($r['approvedDateFrom'], $r['approvedDateTo']) + 1;
+        $proposedHtml = '<div class="date-range"><i class="ti tabler-calendar-check"></i><span>'
+                      . banglaNumber(date('d/m/Y', strtotime($r['approvedDateFrom'])))
+                      . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>'
+                      . banglaNumber(date('d/m/Y', strtotime($r['approvedDateTo']))) . '</span></div>';
+        if (count($propSegs) > 1) {
+            $propTotal = array_sum(array_column($propSegs, 'days'));
+            $proposedHtml .= '<div class="leave-meta"><span class="days-pill days-pill-success">মোট ' . banglaNumber($propTotal) . ' দিন</span></div>'
+                           . $segChips($propSegs);
+        } else {
+            $proposedHtml .= '<div class="leave-meta"><span class="days-pill days-pill-success">' . banglaNumber($pDays) . ' দিন</span>'
+                           . (!empty($r['approvedLeaveTitle']) ? ' <span class="leave-type-chip">' . htmlspecialchars($r['approvedLeaveTitle']) . '</span>' : '')
+                           . '</div>';
+        }
+    } else {
+        $proposedHtml = '<span class="text-muted small">—</span>';
     }
 
     // When it was declined
@@ -182,6 +219,7 @@ while ($r = mysqli_fetch_assoc($dataRes)) {
         'applicant_cell' => $applicantCell,
         'section_center' => $secCenter,
         'requested'      => $requestedHtml,
+        'proposed'       => $proposedHtml,
         'declined_at'    => $whenHtml,
         'reason'         => $reasonCell,
         'action'         => $actionCell,
