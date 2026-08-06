@@ -1,5 +1,8 @@
 <?php
 require_once(__DIR__ . '/../../includes/header_vuexy.php');
+// banglaNumber() lives here — the segment-history modal formats its dates
+// and day counts with it.
+require_once(LIBRARY_PATH . '/number_converter.php');
 
 $leaveApplicationID = intval($_GET['leaveApplicationID'] ?? 0);
 $menuslug           = htmlspecialchars($_GET['menuslug'] ?? 'allowed-leave-applications');
@@ -1207,20 +1210,52 @@ include(__DIR__ . '/../../includes/applicant_balance_modal.php');
                         </tr>
                     </thead>
                     <tbody>
+                        <?php
+                        // See approve-application.php for the rationale — `removed`
+                        // rows carry only oldData, so guarding on newData alone left
+                        // the বিবরণ column blank; `edited` rows now show before → after.
+                        $renderSegChip = function ($json, $strike = false) use ($leaveTypeMap) {
+                            $d = $json ? json_decode($json, true) : null;
+                            if (!$d || !isset($d['leaveType'])) return '';
+                            $label = $leaveTypeMap[(int)$d['leaveType']] ?? 'অজানা';
+                            $from  = !empty($d['dateFrom']) ? banglaNumber(date('d/m/Y', strtotime($d['dateFrom']))) : '';
+                            $to    = !empty($d['dateTo'])   ? banglaNumber(date('d/m/Y', strtotime($d['dateTo'])))   : '';
+                            $days  = banglaNumber((int)($d['days'] ?? 0));
+                            $style = 'display:inline-block;background:#f9f5e8;color:#8a6d1a;padding:3px 9px;'
+                                   . 'border-radius:4px;font-size:0.78rem;border:1px solid #f0e7c8;line-height:1.5;';
+                            if ($strike) {
+                                $style = 'display:inline-block;background:#fdecec;color:#a52a2a;padding:3px 9px;'
+                                       . 'border-radius:4px;font-size:0.78rem;border:1px solid #f5c5c1;'
+                                       . 'line-height:1.5;text-decoration:line-through;';
+                            }
+                            return '<span style="' . $style . '">'
+                                 . htmlspecialchars($label) . ' — ' . $from . ' → ' . $to
+                                 . ' (' . $days . ' দিন)</span>';
+                        };
+                        ?>
                         <?php foreach ($segHistory as $h):
                             $actionBadge = ['created'=>'success','edited'=>'warning','removed'=>'danger'][$h['action']] ?? 'secondary';
                             $actionLabel = ['created'=>'যোগ','edited'=>'সম্পাদনা','removed'=>'অপসারণ'][$h['action']] ?? $h['action'];
-                            $newD = $h['newData'] ? json_decode($h['newData'], true) : null; ?>
+                            $oldChip = $renderSegChip($h['oldData'] ?? null, $h['action'] === 'removed');
+                            $newChip = $renderSegChip($h['newData'] ?? null); ?>
                             <tr>
-                                <td><?= htmlspecialchars(date('d/m/Y H:i', strtotime($h['changedAt']))) ?></td>
+                                <td><?= banglaNumber(date('d/m/Y H:i', strtotime($h['changedAt']))) ?></td>
                                 <td><?= htmlspecialchars($h['changedByName'] ?? $h['employee_name'] ?? '—') ?></td>
                                 <td><span class="badge bg-label-<?= $actionBadge ?>"><?= $actionLabel ?></span></td>
                                 <td>
-                                    <?php if ($newD && isset($newD['leaveType'])): ?>
-                                        <?= htmlspecialchars($leaveTypeMap[(int)$newD['leaveType']] ?? 'অজানা') ?> —
-                                        <?= htmlspecialchars(date('d/m/Y', strtotime($newD['dateFrom']))) ?>
-                                        → <?= htmlspecialchars(date('d/m/Y', strtotime($newD['dateTo']))) ?>
-                                        (<?= (int)$newD['days'] ?> দিন)
+                                    <?php if ($h['action'] === 'edited' && $oldChip !== '' && $newChip !== ''): ?>
+                                        <?= $oldChip ?>
+                                        <i class="ti tabler-arrow-narrow-right text-muted mx-1"></i>
+                                        <?= $newChip ?>
+                                    <?php elseif ($newChip !== ''): ?>
+                                        <?= $newChip ?>
+                                    <?php elseif ($oldChip !== ''): ?>
+                                        <?= $oldChip ?>
+                                    <?php else: ?>
+                                        <span class="text-muted small">—</span>
+                                    <?php endif; ?>
+                                    <?php if (!empty($h['note'])): ?>
+                                        <small class="text-muted d-block mt-1"><?= htmlspecialchars($h['note']) ?></small>
                                     <?php endif; ?>
                                 </td>
                             </tr>
