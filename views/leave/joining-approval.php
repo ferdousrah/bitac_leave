@@ -180,17 +180,46 @@ function render_joining_row($r, $sl, $con, $joiningTypeMap, $jtClassMap, $jtIcon
         ? '<span class="jt-chip ' . $joiningClass . '"><i class="ti ' . $joiningIcon . ' me-1"></i>' . htmlspecialchars($joiningLabel) . '</span>'
         : '<span class="text-muted small">—</span>';
 
-    // Original approved leave
+    // Original approved leave — multi-segment aware. Same seg-list convention
+    // as the other approval queues: >1 segment shows a total-days pill plus a
+    // chip per segment so the approver sees the split before deciding on the
+    // joining request.
     $adateF = $r['approvedDateFrom'];
     $adateT = $r['approvedDateTo'];
     $adateDiff = (int)$r['approvedDays'];
     if ($adateDiff === 0 && $adateF && $adateT) {
         $adateDiff = (int)((strtotime($adateT) - strtotime($adateF)) / 86400) + 1;
     }
+
+    $segStmt = mysqli_prepare($con,
+        "SELECT s.days, lt.leaveTitle
+         FROM leave_application_segments s
+         LEFT JOIN leave_types lt ON s.leaveType = lt.leaveID
+         WHERE s.applicationID = ?
+           AND (s.kind = 'proposed' OR s.kind IS NULL)
+         ORDER BY s.serial ASC, s.dataID ASC");
+    mysqli_stmt_bind_param($segStmt, 'i', $appID);
+    mysqli_stmt_execute($segStmt);
+    $segRes = mysqli_stmt_get_result($segStmt);
+    $segs = [];
+    while ($sg = mysqli_fetch_assoc($segRes)) $segs[] = $sg;
+    mysqli_stmt_close($segStmt);
+
     $primaryHtml = '<span class="text-muted small">—</span>';
     if ($adateF && $adateT) {
-        $primaryHtml = '<div class="date-range"><i class="ti tabler-calendar-check"></i><span>' . banglaNumber(date('d/m/Y', strtotime($adateF))) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date('d/m/Y', strtotime($adateT))) . '</span></div>'
-                     . '<div class="leave-meta"><span class="days-pill days-pill-success">' . banglaNumber($adateDiff) . ' দিন</span></div>';
+        $primaryHtml = '<div class="date-range"><i class="ti tabler-calendar-check"></i><span>' . banglaNumber(date('d/m/Y', strtotime($adateF))) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date('d/m/Y', strtotime($adateT))) . '</span></div>';
+        if (count($segs) > 1) {
+            $segTotal = array_sum(array_column($segs, 'days'));
+            $segParts = [];
+            foreach ($segs as $sg) {
+                $segParts[] = '<span class="seg-pill">' . banglaNumber((int)$sg['days']) . ' দিন '
+                            . htmlspecialchars($sg['leaveTitle'] ?? 'অজানা') . '</span>';
+            }
+            $primaryHtml .= '<div class="leave-meta"><span class="days-pill days-pill-success">মোট ' . banglaNumber($segTotal) . ' দিন</span></div>'
+                          . '<div class="seg-list">' . implode(' ', $segParts) . '</div>';
+        } else {
+            $primaryHtml .= '<div class="leave-meta"><span class="days-pill days-pill-success">' . banglaNumber($adateDiff) . ' দিন</span></div>';
+        }
     }
 
     // Joining date (requested)
