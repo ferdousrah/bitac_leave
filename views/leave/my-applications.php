@@ -8,6 +8,7 @@ $signatoryEmpId = $getUserInfoQRW['employee_id'] ?? '';
 $supervisedCount = 0;
 $approvedCount   = 0;
 $returnedCount   = 0;
+$declinedCount   = 0;
 if ($signatoryEmpId) {
     $r = mysqli_prepare($con, "SELECT COUNT(*) AS c FROM leave_data_for_approval WHERE signatory = ? AND isSupervisor = 1 AND isApproved = 1");
     mysqli_stmt_bind_param($r, 's', $signatoryEmpId);
@@ -35,6 +36,16 @@ if ($signatoryEmpId) {
         $returnedCount = (int)(mysqli_fetch_assoc(mysqli_stmt_get_result($r))['c'] ?? 0);
         mysqli_stmt_close($r);
     }
+
+    // Applications this user personally declined. Scoped on
+    // leave_applications.declinedBy — declining flips every still-pending
+    // chain row to isApproved = 2, so that flag can't identify the decider.
+    $r = mysqli_prepare($con,
+        "SELECT COUNT(*) c FROM leave_applications WHERE status = 2 AND declinedBy = ?");
+    mysqli_stmt_bind_param($r, 's', $signatoryEmpId);
+    mysqli_stmt_execute($r);
+    $declinedCount = (int)(mysqli_fetch_assoc(mysqli_stmt_get_result($r))['c'] ?? 0);
+    mysqli_stmt_close($r);
 }
 
 // Filter dropdowns
@@ -121,6 +132,14 @@ while ($l = mysqli_fetch_assoc($ltQ)) {
                     <span class="badge bg-label-warning ms-2"><?php echo banglaNumber($returnedCount); ?></span>
                 </button>
             </li>
+            <li class="nav-item">
+                <button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#declinedByMe" role="tab"
+                        title="আপনি যেসব আবেদন না মঞ্জুর করেছেন">
+                    <i class="ti tabler-circle-x me-2"></i>
+                    <span class="d-none d-sm-inline">অননুমোদিত</span>
+                    <span class="badge bg-label-danger ms-2"><?php echo banglaNumber($declinedCount); ?></span>
+                </button>
+            </li>
         </ul>
 
         <div class="tab-content p-3">
@@ -192,6 +211,33 @@ while ($l = mysqli_fetch_assoc($ltQ)) {
                     </table>
                 </div>
             </div>
+
+            <!-- Tab 4: Declined-by-me (অননুমোদিত) — history of my rejections -->
+            <div class="tab-pane fade" id="declinedByMe" role="tabpanel">
+                <div class="alert alert-danger d-flex align-items-start gap-2 mb-3" role="alert" style="border-radius:0.5rem;">
+                    <i class="ti tabler-info-circle mt-1"></i>
+                    <div>
+                        <strong>অননুমোদিত</strong> — আপনি যে সব আবেদন না মঞ্জুর করেছেন তার সম্পূর্ণ ইতিহাস,
+                        না মঞ্জুরের তারিখ ও কারণসহ।
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table id="declinedLeaveTable" class="table modern-leave-table align-middle" style="width:100%">
+                        <thead>
+                            <tr>
+                                <th>ক্রমিক</th>
+                                <th>আবেদনকারী</th>
+                                <th>শাখা ও কেন্দ্র</th>
+                                <th>চাহিত ছুটি</th>
+                                <th>না মঞ্জুরের তারিখ</th>
+                                <th>কারণ</th>
+                                <th class="text-center">কার্যাবলী</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -244,7 +290,7 @@ while ($l = mysqli_fetch_assoc($ltQ)) {
 <?php require_once(__DIR__ . '/../../includes/footer_vuexy.php'); ?>
 
 <script type="text/javascript">
-var supleaveTableInstance, approvedLeaveTableInstance, leaveReturnedTableInstance;
+var supleaveTableInstance, approvedLeaveTableInstance, leaveReturnedTableInstance, declinedLeaveTableInstance;
 
 var dtLang = {
     processing: '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">লোড হচ্ছে...</span></div>',
@@ -532,6 +578,48 @@ $(document).ready(function() {
             });
         } else {
             leaveReturnedTableInstance.ajax.reload(null, false);
+        }
+    });
+
+    // Declined-by-me table (lazy load on tab switch) — history of every
+    // application this user has personally declined.
+    var declinedColumns = [
+        { data: "serial",         orderable: false },
+        { data: "applicant_cell", orderable: false },
+        { data: "section_center", orderable: false },
+        { data: "requested",      orderable: false },
+        { data: "declined_at",    orderable: false },
+        { data: "reason",         orderable: false },
+        { data: "action",         orderable: false, searchable: false, className: 'text-center' }
+    ];
+    var declinedLabels = ['ক্রমিক','আবেদনকারী','শাখা ও কেন্দ্র','চাহিত ছুটি','না মঞ্জুরের তারিখ','কারণ','কার্যাবলী'];
+    var declinedLang = Object.assign({}, dtLang, {
+        emptyTable: '<div class="empty-state-rich"><i class="ti tabler-circle-x"></i><div class="empty-title">কোনো অননুমোদিত আবেদন নেই</div><div class="empty-subtitle">আপনি এখনো কোনো আবেদন না মঞ্জুর করেননি</div></div>'
+    });
+    $('button[data-bs-target="#declinedByMe"]').on('shown.bs.tab', function () {
+        if (!declinedLeaveTableInstance) {
+            declinedLeaveTableInstance = $('#declinedLeaveTable').DataTable({
+                processing: true,
+                serverSide: true,
+                responsive: false,
+                autoWidth: false,
+                ajax: {
+                    url:  '../../api/leave/fetch-declined-by-me.php',
+                    type: 'POST'
+                },
+                columns: declinedColumns,
+                createdRow: function(row) {
+                    $(row).find('td').each(function(i) {
+                        $(this).attr('data-label', declinedLabels[i] || '');
+                    });
+                },
+                pageLength: 10,
+                lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "সকল"]],
+                language: declinedLang,
+                order: []
+            });
+        } else {
+            declinedLeaveTableInstance.ajax.reload(null, false);
         }
     });
 
