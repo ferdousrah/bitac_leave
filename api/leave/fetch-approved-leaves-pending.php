@@ -213,11 +213,34 @@ while ($empRow = mysqli_fetch_array($dataResult)) {
         $jtIcon  = $empRow['joiningType'] == 1 ? 'tabler-clock' : ($empRow['joiningType'] == 2 ? 'tabler-calendar-minus' : 'tabler-calendar-plus');
         $applicationTypeHtml = '<span class="jt-chip ' . $jtClass . '"><i class="ti ' . $jtIcon . ' me-1"></i>' . htmlspecialchars($applicationType) . '</span>';
 
+        // Multi-segment breakdown for the primary (approved) leave — same
+        // seg-list convention as the other approval queues.
+        $__aid = intval($empRow['leaveApplicationID']);
+        $__segs = [];
+        $__segRes = mysqli_query($con, "SELECT s.days, lt.leaveTitle
+                                         FROM leave_application_segments s
+                                         LEFT JOIN leave_types lt ON s.leaveType = lt.leaveID
+                                         WHERE s.applicationID = $__aid
+                                           AND (s.kind = 'proposed' OR s.kind IS NULL)
+                                         ORDER BY s.serial ASC, s.dataID ASC");
+        if ($__segRes) while ($__sr = mysqli_fetch_assoc($__segRes)) $__segs[] = $__sr;
+
         // Primary leave (date + days + type chip)
-        $primaryHtml = '<div class="date-range"><i class="ti tabler-calendar-check"></i><span>' . banglaNumber(date_format($adateF, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($adateT, "d/m/Y")) . '</span></div>'
-                     . '<div class="leave-meta"><span class="days-pill days-pill-success">' . banglaNumber($adateDiff) . ' দিন</span>'
-                     . ($leaveTypeText ? ' <span class="leave-type-chip">' . htmlspecialchars($leaveTypeText) . '</span>' : '')
-                     . '</div>';
+        $primaryHtml = '<div class="date-range"><i class="ti tabler-calendar-check"></i><span>' . banglaNumber(date_format($adateF, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($adateT, "d/m/Y")) . '</span></div>';
+        if (count($__segs) > 1) {
+            $__segTotal = array_sum(array_column($__segs, 'days'));
+            $__segParts = [];
+            foreach ($__segs as $__sg) {
+                $__segParts[] = '<span class="seg-pill">' . banglaNumber((int)$__sg['days']) . ' দিন '
+                              . htmlspecialchars($__sg['leaveTitle'] ?? 'অজানা') . '</span>';
+            }
+            $primaryHtml .= '<div class="leave-meta"><span class="days-pill days-pill-success">মোট ' . banglaNumber($__segTotal) . ' দিন</span></div>'
+                          . '<div class="seg-list">' . implode(' ', $__segParts) . '</div>';
+        } else {
+            $primaryHtml .= '<div class="leave-meta"><span class="days-pill days-pill-success">' . banglaNumber($adateDiff) . ' দিন</span>'
+                          . ($leaveTypeText ? ' <span class="leave-type-chip">' . htmlspecialchars($leaveTypeText) . '</span>' : '')
+                          . '</div>';
+        }
 
         // Spent leave
         $spentHtml = '<div class="date-range"><i class="ti tabler-clock-check"></i><span>' . banglaNumber(date_format($leaveSpentDateFrom, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($leaveSpentDateTo, "d/m/Y")) . '</span></div>'
