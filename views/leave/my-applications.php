@@ -7,6 +7,7 @@ $signatoryEmpId = $getUserInfoQRW['employee_id'] ?? '';
 // Stats counts
 $supervisedCount = 0;
 $approvedCount   = 0;
+$returnedCount   = 0;
 if ($signatoryEmpId) {
     $r = mysqli_prepare($con, "SELECT COUNT(*) AS c FROM leave_data_for_approval WHERE signatory = ? AND isSupervisor = 1 AND isApproved = 1");
     mysqli_stmt_bind_param($r, 's', $signatoryEmpId);
@@ -19,6 +20,21 @@ if ($signatoryEmpId) {
     mysqli_stmt_execute($r);
     $approvedCount = (int)(mysqli_fetch_assoc(mysqli_stmt_get_result($r))['c'] ?? 0);
     mysqli_stmt_close($r);
+
+    // Total applications this user has ever sent back via "ফেরত পাঠান".
+    // This is a history tab, so nothing is excluded once returned — the count
+    // must match the unfiltered list in fetch-returned-by-me.php.
+    // Table is created lazily by api/leave/return-application.php, so guard
+    // with a table-exists check to avoid a fatal on first-boot.
+    $_tblCheck = mysqli_query($con, "SHOW TABLES LIKE 'leave_return_history'");
+    if ($_tblCheck && mysqli_num_rows($_tblCheck) > 0) {
+        $r = mysqli_prepare($con,
+            "SELECT COUNT(*) c FROM leave_return_history WHERE returnedBy = ?");
+        mysqli_stmt_bind_param($r, 's', $signatoryEmpId);
+        mysqli_stmt_execute($r);
+        $returnedCount = (int)(mysqli_fetch_assoc(mysqli_stmt_get_result($r))['c'] ?? 0);
+        mysqli_stmt_close($r);
+    }
 }
 
 // Filter dropdowns
@@ -97,6 +113,14 @@ while ($l = mysqli_fetch_assoc($ltQ)) {
                     <span class="badge ms-2"><?php echo banglaNumber($approvedCount); ?></span>
                 </button>
             </li>
+            <li class="nav-item">
+                <button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#returnedByMe" role="tab"
+                        title="আপনি যেসব আবেদন ফেরত পাঠিয়েছেন সেগুলো ট্র্যাক করুন">
+                    <i class="ti tabler-corner-up-left me-2"></i>
+                    <span class="d-none d-sm-inline">পুনঃ যাচাই</span>
+                    <span class="badge bg-label-warning ms-2"><?php echo banglaNumber($returnedCount); ?></span>
+                </button>
+            </li>
         </ul>
 
         <div class="tab-content p-3">
@@ -132,6 +156,35 @@ while ($l = mysqli_fetch_assoc($ltQ)) {
                                 <th>শাখা ও কেন্দ্র</th>
                                 <th>চাহিত ছুটি</th>
                                 <th>প্রস্তাবিত ছুটি</th>
+                                <th class="text-center">কার্যাবলী</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tab 3: Returned-by-me (পুনঃ যাচাই) — tracking view -->
+            <div class="tab-pane fade" id="returnedByMe" role="tabpanel">
+                <div class="alert alert-warning d-flex align-items-start gap-2 mb-3" role="alert" style="border-radius:0.5rem;">
+                    <i class="ti tabler-info-circle mt-1"></i>
+                    <div>
+                        <strong>পুনঃ যাচাই</strong> — আপনি যে সব আবেদন সংশোধনের জন্য ফেরত পাঠিয়েছেন তার সম্পূর্ণ ইতিহাস।
+                        আবেদনকারী পুনরায় জমা দিলে বা প্রক্রিয়া শেষ হলেও এন্ট্রিগুলো এখানে থেকে যাবে —
+                        প্রতিটির বর্তমান অবস্থা পাশে দেখানো হয়েছে।
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table id="leaveReturnedTable" class="table modern-leave-table align-middle" style="width:100%">
+                        <thead>
+                            <tr>
+                                <th>ক্রমিক</th>
+                                <th>আবেদনকারী</th>
+                                <th>শাখা ও কেন্দ্র</th>
+                                <th>চাহিত ছুটি</th>
+                                <th>ফেরত পাঠানো হয়েছে</th>
+                                <th>ফেরতের কারণ</th>
+                                <th>বর্তমান অবস্থা</th>
                                 <th class="text-center">কার্যাবলী</th>
                             </tr>
                         </thead>
@@ -191,7 +244,7 @@ while ($l = mysqli_fetch_assoc($ltQ)) {
 <?php require_once(__DIR__ . '/../../includes/footer_vuexy.php'); ?>
 
 <script type="text/javascript">
-var supleaveTableInstance, approvedLeaveTableInstance;
+var supleaveTableInstance, approvedLeaveTableInstance, leaveReturnedTableInstance;
 
 var dtLang = {
     processing: '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">লোড হচ্ছে...</span></div>',
@@ -438,6 +491,49 @@ $(document).ready(function() {
     if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
         $('[data-bs-toggle="tooltip"]').each(function(){ new bootstrap.Tooltip(this); });
     }
+
+    // Returned-by-me table (lazy load on tab switch) — history of every
+    // application this user has sent back for re-verification.
+    var returnedColumns = [
+        { data: "serial",         orderable: false },
+        { data: "applicant_cell", orderable: false },
+        { data: "section_center", orderable: false },
+        { data: "requested",      orderable: false },
+        { data: "returned_to",    orderable: false },
+        { data: "note",           orderable: false },
+        { data: "status",         orderable: false },
+        { data: "action",         orderable: false, searchable: false, className: 'text-center' }
+    ];
+    var returnedLabels = ['ক্রমিক','আবেদনকারী','শাখা ও কেন্দ্র','চাহিত ছুটি','ফেরত পাঠানো হয়েছে','ফেরতের কারণ','বর্তমান অবস্থা','কার্যাবলী'];
+    var returnedLang = Object.assign({}, dtLang, {
+        emptyTable: '<div class="empty-state-rich"><i class="ti tabler-corner-up-left"></i><div class="empty-title">কোনো পুনঃ যাচাই নেই</div><div class="empty-subtitle">আপনি এখনো কোনো আবেদন ফেরত পাঠাননি</div></div>'
+    });
+    $('button[data-bs-target="#returnedByMe"]').on('shown.bs.tab', function () {
+        if (!leaveReturnedTableInstance) {
+            leaveReturnedTableInstance = $('#leaveReturnedTable').DataTable({
+                processing: true,
+                serverSide: true,
+                responsive: false,
+                autoWidth: false,
+                ajax: {
+                    url:  '../../api/leave/fetch-returned-by-me.php',
+                    type: 'POST'
+                },
+                columns: returnedColumns,
+                createdRow: function(row) {
+                    $(row).find('td').each(function(i) {
+                        $(this).attr('data-label', returnedLabels[i] || '');
+                    });
+                },
+                pageLength: 10,
+                lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "সকল"]],
+                language: returnedLang,
+                order: []
+            });
+        } else {
+            leaveReturnedTableInstance.ajax.reload(null, false);
+        }
+    });
 
     // ── আবেদনপত্র preview modal wiring ─────────────────────
     var $adModal  = $('#appDocModal');

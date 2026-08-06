@@ -40,17 +40,11 @@ $draw   = isset($_POST['draw'])   ? intval($_POST['draw'])   : 1;
 $start  = isset($_POST['start'])  ? max(0, intval($_POST['start']))  : 0;
 $length = isset($_POST['length']) ? max(1, intval($_POST['length'])) : 10;
 
-// Base FROM/WHERE — leave_return_history joined with the application it belongs to.
-// The NOT EXISTS clause hides applications the returner no longer needs to
-// track. Two conditions inside cover both "cleared" states:
-//   (a) resubmit is back in my *actionable* queue right now — belongs in
-//       সুপারিশ/অনুমোদন, not পুনঃ যাচাই. Actionable requires the previous
-//       signatory to have re-approved (or me being supervisor / first in
-//       the chain); otherwise the entry stays visible because the ball is
-//       still with someone else after the return.
-//   (b) I already re-acted after this return (approvedDate on/after the
-//       return's date) → the app has moved on to someone else's desk, so
-//       it's done from my perspective
+// Base FROM/WHERE — leave_return_history joined with the application it belongs
+// to. This tab is a permanent HISTORY of everything the current user has sent
+// back: entries are never filtered out when the applicant resubmits or the
+// application finishes its chain. The বর্তমান অবস্থা column already reports
+// where each one ended up.
 $baseFrom = "
 FROM leave_return_history lrh
 INNER JOIN leave_applications la ON lrh.leaveApplicationID = la.dataID
@@ -59,35 +53,7 @@ LEFT  JOIN job_title       jt    ON el.designation          = jt.id
 LEFT  JOIN sections        s     ON el.section_id           = s.id
 LEFT  JOIN organization    o     ON el.organization_id      = o.id
 LEFT  JOIN leave_types     lt    ON la.leaveType            = lt.leaveID
-WHERE lrh.returnedBy = ?
-  AND NOT EXISTS (
-      SELECT 1
-      FROM leave_data_for_approval ldfa
-      INNER JOIN leave_applications app2 ON ldfa.leaveApplicationID = app2.dataID
-      WHERE ldfa.leaveApplicationID = lrh.leaveApplicationID
-        AND ldfa.signatory      = lrh.returnedBy
-        AND (
-            (ldfa.isApproved = 0
-             AND (ldfa.isSupervisor = 1 OR ldfa.isSentbyAdmin = 1)
-             AND app2.status <> 3
-             AND (
-                 ldfa.isSupervisor = 1
-                 OR ldfa.prevSignatory = 0
-                 OR ldfa.prevSignatory IS NULL
-                 OR EXISTS (
-                     SELECT 1 FROM leave_data_for_approval prev
-                     WHERE prev.leaveApplicationID = ldfa.leaveApplicationID
-                       AND prev.signatory = ldfa.prevSignatory
-                       AND prev.isApproved = 1
-                       AND prev.serial    = ldfa.serial - 1
-                 )
-             ))
-            OR
-            (ldfa.isApproved = 1
-             AND ldfa.approvedDate IS NOT NULL
-             AND ldfa.approvedDate >= DATE(lrh.createdAt))
-        )
-  )";
+WHERE lrh.returnedBy = ?";
 
 // Count
 $countStmt = mysqli_prepare($con, "SELECT COUNT(*) c $baseFrom");

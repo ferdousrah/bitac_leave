@@ -28,7 +28,6 @@ while ($ltRow = mysqli_fetch_assoc($ltQ)) {
 $signatoryEmpId = $getUserInfoQRW['employee_id'] ?? '';
 $superviseCount = 0;
 $approveCount   = 0;
-$returnedCount  = 0;
 if ($signatoryEmpId) {
     // Exclude returned apps (la.status = 3) — while sitting on the applicant's
     // desk they must not inflate the supervisor's pending count. See the
@@ -72,53 +71,6 @@ if ($signatoryEmpId) {
     $approveCount = (int)(mysqli_fetch_assoc(mysqli_stmt_get_result($_s))['c'] ?? 0);
     mysqli_stmt_close($_s);
 
-    // Count of applications this user has returned via the "ফেরত পাঠান" flow.
-    // Table is created lazily by api/leave/return-application.php, so we guard
-    // the query with a table-exists check to avoid a fatal on first-boot.
-    $_tblCheck = mysqli_query($con, "SHOW TABLES LIKE 'leave_return_history'");
-    if ($_tblCheck && mysqli_num_rows($_tblCheck) > 0) {
-        // Mirror the visible filter in fetch-returned-by-me.php — exclude
-        // entries the returner no longer needs to track. Entry is hidden
-        // only when the returner's own row is currently ACTIONABLE (prev
-        // sig already re-approved, admin forwarded) OR they have already
-        // re-acted after the return.
-        $_s = mysqli_prepare($con,
-            "SELECT COUNT(*) c
-             FROM leave_return_history lrh
-             WHERE lrh.returnedBy = ?
-               AND NOT EXISTS (
-                   SELECT 1
-                   FROM leave_data_for_approval ldfa
-                   INNER JOIN leave_applications app2 ON ldfa.leaveApplicationID = app2.dataID
-                   WHERE ldfa.leaveApplicationID = lrh.leaveApplicationID
-                     AND ldfa.signatory      = lrh.returnedBy
-                     AND (
-                         (ldfa.isApproved = 0
-                          AND (ldfa.isSupervisor = 1 OR ldfa.isSentbyAdmin = 1)
-                          AND app2.status <> 3
-                          AND (
-                              ldfa.isSupervisor = 1
-                              OR ldfa.prevSignatory = 0
-                              OR ldfa.prevSignatory IS NULL
-                              OR EXISTS (
-                                  SELECT 1 FROM leave_data_for_approval prev
-                                  WHERE prev.leaveApplicationID = ldfa.leaveApplicationID
-                                    AND prev.signatory = ldfa.prevSignatory
-                                    AND prev.isApproved = 1
-                                    AND prev.serial    = ldfa.serial - 1
-                              )
-                          ))
-                         OR
-                         (ldfa.isApproved = 1
-                          AND ldfa.approvedDate IS NOT NULL
-                          AND ldfa.approvedDate >= DATE(lrh.createdAt))
-                     )
-               )");
-        mysqli_stmt_bind_param($_s, 's', $signatoryEmpId);
-        mysqli_stmt_execute($_s);
-        $returnedCount = (int)(mysqli_fetch_assoc(mysqli_stmt_get_result($_s))['c'] ?? 0);
-        mysqli_stmt_close($_s);
-    }
 }
 ?>
 
@@ -179,14 +131,6 @@ if ($signatoryEmpId) {
                     <i class="ti tabler-circle-check me-2"></i>
                     <span class="d-none d-sm-inline">অনুমোদন</span>
                     <span class="badge bg-label-info ms-2"><?php echo banglaNumber($approveCount); ?></span>
-                </button>
-            </li>
-            <li class="nav-item">
-                <button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#returnedByMe" role="tab"
-                        title="আপনি যেসব আবেদন ফেরত পাঠিয়েছেন সেগুলো ট্র্যাক করুন">
-                    <i class="ti tabler-corner-up-left me-2"></i>
-                    <span class="d-none d-sm-inline">পুনঃ যাচাই</span>
-                    <span class="badge bg-label-warning ms-2"><?php echo banglaNumber($returnedCount); ?></span>
                 </button>
             </li>
         </ul>
@@ -345,33 +289,6 @@ if ($signatoryEmpId) {
                 </div>
             </div>
 
-            <!-- Tab 3: Returned-by-me (পুনঃ যাচাই) — tracking view -->
-            <div class="tab-pane fade" id="returnedByMe" role="tabpanel">
-                <div class="alert alert-warning d-flex align-items-start gap-2 mb-3" role="alert" style="border-radius:0.5rem;">
-                    <i class="ti tabler-info-circle mt-1"></i>
-                    <div>
-                        <strong>পুনঃ যাচাই</strong> — আপনি যে সব আবেদন সংশোধনের জন্য ফেরত পাঠিয়েছেন সেগুলোর তালিকা।
-                        প্রতিটি আবেদনের বর্তমান অবস্থা পাশে দেখানো হয়েছে।
-                    </div>
-                </div>
-                <div class="table-responsive">
-                    <table id="leaveReturnedTable" class="table modern-leave-table align-middle" style="width:100%">
-                        <thead>
-                            <tr>
-                                <th>ক্রমিক</th>
-                                <th>আবেদনকারী</th>
-                                <th>শাখা ও কেন্দ্র</th>
-                                <th>চাহিত ছুটি</th>
-                                <th>ফেরত পাঠানো হয়েছে</th>
-                                <th>ফেরতের কারণ</th>
-                                <th>বর্তমান অবস্থা</th>
-                                <th class="text-center">কার্যাবলী</th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-            </div>
         </div>
     </div>
 </div>
@@ -448,7 +365,6 @@ if ($signatoryEmpId) {
 
 var leaveTableInstance;
 var leaveApproveTableInstance;
-var leaveReturnedTableInstance;
 
 var dtLang = {
     processing: '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">লোড হচ্ছে...</span></div>',
@@ -805,76 +721,6 @@ $(document).ready(function() {
                 language: dtLang
             });
         }
-    });
-
-    // Returned-by-me table (lazy load on tab switch) — tracking view for
-    // applications the current user has personally sent back for re-verification.
-    var returnedColumns = [
-        { data: "serial",         orderable: false },
-        { data: "applicant_cell", orderable: false },
-        { data: "section_center", orderable: false },
-        { data: "requested",      orderable: false },
-        { data: "returned_to",    orderable: false },
-        { data: "note",           orderable: false },
-        { data: "status",         orderable: false },
-        { data: "action",         orderable: false, searchable: false, className: 'text-center' }
-    ];
-    var returnedLabels = ['ক্রমিক','আবেদনকারী','শাখা ও কেন্দ্র','চাহিত ছুটি','ফেরত পাঠানো হয়েছে','ফেরতের কারণ','বর্তমান অবস্থা','কার্যাবলী'];
-    var returnedLang = Object.assign({}, dtLang, {
-        emptyTable: '<div class="empty-state-rich"><i class="ti tabler-corner-up-left"></i><div class="empty-title">কোনো পুনঃ যাচাই নেই</div><div class="empty-subtitle">আপনি এখনো কোনো আবেদন ফেরত পাঠাননি</div></div>'
-    });
-    $('button[data-bs-target="#returnedByMe"]').on('shown.bs.tab', function () {
-        if (!leaveReturnedTableInstance) {
-            leaveReturnedTableInstance = $('#leaveReturnedTable').DataTable({
-                processing: true,
-                serverSide: true,
-                responsive: false,
-                autoWidth: false,
-                ajax: {
-                    url:  '../../api/leave/fetch-returned-by-me.php',
-                    type: 'POST'
-                },
-                columns: returnedColumns,
-                createdRow: function(row) {
-                    $(row).find('td').each(function(i) {
-                        $(this).attr('data-label', returnedLabels[i] || '');
-                    });
-                },
-                pageLength: 10,
-                lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "সকল"]],
-                language: returnedLang,
-                order: []
-            });
-        } else {
-            leaveReturnedTableInstance.ajax.reload(null, false);
-        }
-    });
-
-    // ── আবেদনপত্র preview modal wiring ─────────────────────
-    var $adModal  = $('#appDocModal');
-    var $adIframe = $('#appDocIframe');
-    var $adLoader = $('#appDocLoader');
-    var $adDlBtn  = $('#appDocDownloadBtn');
-
-    // Delegated — rows re-render on every DataTables draw across all 3 tabs
-    $(document).on('click', '.app-doc-view', function() {
-        var url = $(this).data('url');
-        if (!url) return;
-        $adLoader.removeClass('d-none');
-        $adIframe[0].src = url;
-        $adDlBtn.attr('href', url);
-        $adModal.modal('show');
-    });
-
-    $adIframe[0].addEventListener('load', function() {
-        if ($adIframe[0].src && $adIframe[0].src.indexOf('about:blank') === -1) {
-            $adLoader.addClass('d-none');
-        }
-    });
-
-    $adModal.on('hidden.bs.modal', function() {
-        $adIframe[0].src = 'about:blank';
-        $adLoader.removeClass('d-none');
     });
 
 });
