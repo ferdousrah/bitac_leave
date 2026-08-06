@@ -117,6 +117,9 @@ SELECT
     la.primaryApprovedLeaveType AS primaryApprovedLeaveType,
     la.applicationType          AS applicationType,
     la.approvedDateTo           AS approvedDateTo,
+    la.cancellationReasion      AS cancellationReasion,
+    la.cancellationDate         AS cancellationDate,
+    la.declinedBy               AS declinedBy,
     el.employee_name            AS employee_name,
     el.photo                    AS employee_photo,
     jt.job_title_name           AS job_title_name,
@@ -389,6 +392,51 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
         }
     } else if ($row['status'] == 2 && !$hasJoining) {
         $status = '<span class="status-pill status-rejected"><i class="ti tabler-x me-1"></i>অনুমোদিত হয়নি</span>';
+
+        // Show who declined it, when, and why — the applicant otherwise only
+        // saw the bare "অনুমোদিত হয়নি" pill with no explanation. The reason is
+        // written to leave_applications.cancellationReasion by the decline
+        // branch of api/leave/approve-application.php; fall back to the note
+        // on the declining chain row for older records that predate it.
+        $_reason = trim((string)($row['cancellationReasion'] ?? ''));
+        $_by     = '';
+        $_byTitle = '';
+        $_declinedBy = (int)($row['declinedBy'] ?? 0);
+        if ($_declinedBy > 0) {
+            $_dq = mysqli_query($con,
+                "SELECT el.employee_name, jt.job_title_name
+                 FROM employee_list el
+                 LEFT JOIN job_title jt ON el.designation = jt.id
+                 WHERE el.id = $_declinedBy LIMIT 1");
+            if ($_dq && $_dr = mysqli_fetch_assoc($_dq)) {
+                $_by      = trim($_dr['employee_name'] ?? '');
+                $_byTitle = trim($_dr['job_title_name'] ?? '');
+            }
+        }
+        if ($_reason === '') {
+            $_lid2 = (int)$row['dataID'];
+            $_nq = mysqli_query($con,
+                "SELECT note FROM leave_data_for_approval
+                 WHERE leaveApplicationID = $_lid2 AND isApproved = 2 AND note <> ''
+                 ORDER BY approvedDate DESC, dataID DESC LIMIT 1");
+            if ($_nq && $_nr = mysqli_fetch_assoc($_nq)) {
+                $_reason = trim($_nr['note'] ?? '');
+            }
+        }
+        $_when = !empty($row['cancellationDate'])
+            ? banglaNumber(date('d/m/Y', strtotime($row['cancellationDate'])))
+            : '';
+
+        if ($_by !== '' || $_reason !== '') {
+            $status .= '<div class="mt-2 p-2" style="background:#fdecec;border:1px solid #f5c5c1;border-radius:0.4rem;font-size:0.75rem;line-height:1.5;color:#7a2020;max-width:320px;">'
+                     . '<div class="fw-semibold mb-1" style="color:#a52a2a;"><i class="ti tabler-user-x me-1"></i>না মঞ্জুর করেছেন'
+                     . ($_by !== '' ? ': ' . htmlspecialchars($_by) : '')
+                     . ($_byTitle !== '' ? ' <span style="color:#8a90a6;">(' . htmlspecialchars($_byTitle) . ')</span>' : '')
+                     . ($_when !== '' ? ' <span class="text-muted">— ' . $_when . '</span>' : '')
+                     . '</div>'
+                     . ($_reason !== '' ? '<div><i class="ti tabler-message me-1"></i><strong>কারণ:</strong> ' . nl2br(htmlspecialchars($_reason)) . '</div>' : '')
+                     . '</div>';
+        }
     } else if ($row['status'] == 3) {
         $status = '<span class="status-pill" style="background:#fff3e1;color:#b8651a;"><i class="ti tabler-corner-up-left me-1"></i>পুনঃ যাচাই — সম্পাদনা করুন</span>';
 
