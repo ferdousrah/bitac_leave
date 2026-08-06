@@ -340,6 +340,81 @@ foreach (['login-side.jpg', 'login-side.jpeg', 'login-side.png', 'login-side.web
             .pane { padding: 44px 26px 70px; }
         }
 
+        /* ── SweetAlert2 ───────────────────────────────────
+           The theme's sweetalert2.css is an override layer written against
+           Bootstrap's custom properties, which are declared in core.css — a
+           stylesheet this page intentionally doesn't load. An undefined var
+           invalidates its whole declaration, so background-color:
+           var(--bs-modal-bg) left the dialog transparent. Supply the values
+           that file reads, then restate the few rules that should follow the
+           login design. Those selectors mirror the theme's own specificity so
+           they win on source order. */
+        :root {
+            --bs-font-sans-serif: 'Hind Siliguri', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --bs-body-color: #4a4d63;
+            --bs-secondary-color: #9095ab;
+            --bs-base-color: #23263a;
+            --bs-border-color: #e4e6ef;
+            --bs-border-width: 1px;
+            --bs-white: #fff;
+            --bs-gray-100: #f5f6fa;
+            --bs-paper-bg: #fff;
+            --bs-modal-bg: #fff;
+            --bs-modal-box-shadow: 0 18px 50px rgba(35, 38, 58, 0.18);
+            --bs-box-shadow-lg: 0 18px 50px rgba(35, 38, 58, 0.18);
+            --bs-primary: #7367f0;
+            --bs-primary-contrast: #fff;
+            --bs-secondary: #808390;
+            --bs-secondary-rgb: 128, 131, 144;
+            --bs-success: #28c76f;
+            --bs-success-rgb: 40, 199, 111;
+            --bs-info: #00bad1;
+            --bs-info-rgb: 0, 186, 209;
+            --bs-warning: #ff9f43;
+            --bs-warning-rgb: 255, 159, 67;
+            --bs-danger: #ff4c51;
+            --bs-danger-rgb: 255, 76, 81;
+            --bs-dark: #23263a;
+            --bs-progress-bg-amount: 8%;
+            --bs-progress-mix-bg: #fff;
+        }
+        .swal2-container .swal2-modal.swal2-popup {
+            border-radius: 14px;
+            padding: 28px 26px 22px;
+            width: 30em;
+            max-width: calc(100vw - 32px);
+        }
+        .swal2-container .swal2-modal.swal2-popup .swal2-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--ink);
+            padding: 0;
+            margin-block: 0 8px;
+            max-inline-size: none;
+        }
+        .swal2-container .swal2-modal.swal2-popup .swal2-html-container {
+            font-size: 0.93rem;
+            line-height: 1.6;
+            color: var(--body);
+            margin: 0;
+            padding: 0;
+        }
+        .swal2-container .swal2-modal.swal2-popup .swal2-actions { margin-top: 22px; gap: 10px; }
+        .swal2-container .swal2-modal.swal2-popup .swal2-icon { margin: 4px auto 18px; }
+        .swal2-container .swal2-styled.swal2-confirm {
+            background-color: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 24px;
+            padding: 10px 30px;
+            font-size: 0.92rem;
+            font-weight: 600;
+            font-family: inherit;
+            box-shadow: 0 5px 16px rgba(115, 103, 240, 0.3);
+        }
+        .swal2-container .swal2-styled.swal2-confirm:hover { background-color: var(--accent-dark); }
+        .swal2-container .swal2-styled:focus { outline: none; box-shadow: 0 0 0 4px var(--accent-soft); }
+
         @keyframes spin { to { transform: rotate(360deg); } }
         .spinner {
             display: inline-block;
@@ -393,7 +468,7 @@ foreach (['login-side.jpg', 'login-side.jpeg', 'login-side.png', 'login-side.web
                         </button>
                     </div>
 
-                    <a href="#" class="forgot" onclick="event.preventDefault(); Swal.fire({icon:'info',title:'পাসওয়ার্ড সহায়তা',text:'পাসওয়ার্ড পুনরুদ্ধারের জন্য আপনার সংশ্লিষ্ট কেন্দ্রের প্রশাসন বিভাগের সাথে যোগাযোগ করুন।',confirmButtonColor:'#7367f0',customClass:{confirmButton:'btn btn-primary'},buttonsStyling:false});">পাসওয়ার্ড ভুলে গেছেন?</a>
+                    <a href="#" class="forgot" onclick="event.preventDefault(); Swal.fire({icon:'info',title:'পাসওয়ার্ড সহায়তা',text:'পাসওয়ার্ড পুনরুদ্ধারের জন্য আপনার সংশ্লিষ্ট কেন্দ্রের প্রশাসন বিভাগের সাথে যোগাযোগ করুন।',confirmButtonColor:'#7367f0'});">পাসওয়ার্ড ভুলে গেছেন?</a>
 
                     <div class="remember-row">
                         <span class="lbl">লগইন তথ্য মনে রাখুন</span>
@@ -446,9 +521,7 @@ $(function() {
             icon: 'error',
             title: 'ত্রুটি',
             text: text,
-            confirmButtonColor: '#7367f0',
-            customClass: { confirmButton: 'btn btn-primary' },
-            buttonsStyling: false
+            confirmButtonColor: '#7367f0'
         });
     }
 
