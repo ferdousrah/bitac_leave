@@ -105,6 +105,25 @@ if ($isCenterAdmin) {
     $signatoryLevel = (int)$ar['serial'];
 }
 
+// A signatory who ALSO holds isCenterAdmin takes the branch above and would
+// otherwise be logged with signatoryLevel = 0, making their edit
+// indistinguishable from a real center-admin edit in the history — and, when
+// the same person sits in the chain twice (supervisor + approver), impossible
+// to attribute to the right desk. Whenever the caller supplied an approvalID
+// that genuinely belongs to them, record that row's serial as the level.
+// Permission logic above is deliberately untouched.
+if ($signatoryLevel === 0 && $approvalID) {
+    $lvlStmt = mysqli_prepare($con,
+        "SELECT serial FROM leave_data_for_approval
+         WHERE dataID = ? AND leaveApplicationID = ? AND signatory = ? LIMIT 1");
+    mysqli_stmt_bind_param($lvlStmt, 'iii', $approvalID, $applicationID, $empID);
+    mysqli_stmt_execute($lvlStmt);
+    if ($lvlRow = mysqli_fetch_assoc(mysqli_stmt_get_result($lvlStmt))) {
+        $signatoryLevel = (int)$lvlRow['serial'];
+    }
+    mysqli_stmt_close($lvlStmt);
+}
+
 // ── Validate incoming segments ────────────────────────────────────
 $cleanSegs = [];
 foreach ($incoming as $i => $s) {

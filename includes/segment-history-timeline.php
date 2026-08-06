@@ -58,8 +58,11 @@ function render_segment_history_timeline($con, $applicationID, array $leaveTypeM
     mysqli_stmt_close($aStmt);
 
     // ── Chain maps: by serial AND by employee id ───────────────────
+    // chainByEmp keeps EVERY row a person holds, in serial order — the same
+    // employee is routinely both the supervisor (serial 1) and an approver
+    // further down the chain, and those are different desks.
     $chain = [];      // serial      => meta
-    $chainByEmp = []; // employee_id => meta
+    $chainByEmp = []; // employee_id => [meta, ...] ordered by serial
     $cStmt = mysqli_prepare($con,
         "SELECT ldfa.serial, ldfa.isSupervisor, ldfa.signatory, el.employee_name, jt.job_title_name
          FROM leave_data_for_approval ldfa
@@ -79,10 +82,7 @@ function render_segment_history_timeline($con, $applicationID, array $leaveTypeM
         ];
         $chain[(int)$c['serial']] = $meta;
         $emp = (int)$c['signatory'];
-        // Supervisor row wins if the same person appears twice in the chain
-        if ($emp && (!isset($chainByEmp[$emp]) || $meta['isSupervisor'])) {
-            $chainByEmp[$emp] = $meta;
-        }
+        if ($emp) $chainByEmp[$emp][] = $meta;
     }
     mysqli_stmt_close($cStmt);
 
@@ -211,26 +211,42 @@ function render_segment_history_timeline($con, $applicationID, array $leaveTypeM
              . ' · ' . $from . ' → ' . $to . ' (' . $days . ' দিন)</span>';
     };
 
-    // Resolve the desk from WHO acted, falling back to signatoryLevel.
-    // signatoryLevel is 0 both for the center admin and for a supervisor who
-    // also holds isCenterAdmin (save-segments.php checks that branch first),
-    // so trusting it alone mislabels supervisor edits as admin edits.
-    $deskMeta = function ($level, $note, $actorEmp) use ($chain, $chainByEmp, $applicantID) {
+    // Resolve the desk for a batch.
+    //
+    // signatoryLevel is authoritative when > 0. It is 0 both for a genuine
+    // center-admin edit and — on rows written before save-segments.php started
+    // recording the serial — for any signatory who also holds isCenterAdmin.
+    // For those legacy rows we fall back to the actor's position in the chain:
+    // a person's Nth batch maps to their Nth chain row in serial order, which
+    // is what actually happens (they recommend as supervisor first, then act
+    // again later as an approver).
+    //
+    // $actorSeen is mutated across calls, so batches must be resolved in
+    // chronological order — the render loop below does exactly that.
+    $actorSeen = [];
+    $deskMeta = function ($level, $note, $actorEmp) use ($chain, $chainByEmp, $applicantID, &$actorSeen) {
         if (stripos((string)$note, 'applicant') !== false
             || ($actorEmp && $applicantID && $actorEmp === $applicantID)) {
             return ['আবেদনকারীর জমা', '#e8e5ff', '#5648c4', 'tabler-user'];
         }
+
         $meta = null;
-        if ($actorEmp && isset($chainByEmp[$actorEmp])) {
-            $meta = $chainByEmp[$actorEmp];
-        } elseif ($level > 0 && isset($chain[$level])) {
+        if ($level > 0 && isset($chain[$level])) {
             $meta = $chain[$level];
+        } elseif ($actorEmp && !empty($chainByEmp[$actorEmp])) {
+            $seatList = $chainByEmp[$actorEmp];
+            $idx = $actorSeen[$actorEmp] ?? 0;
+            $meta = $seatList[min($idx, count($seatList) - 1)];
         }
+        if ($actorEmp && !empty($chainByEmp[$actorEmp])) {
+            $actorSeen[$actorEmp] = ($actorSeen[$actorEmp] ?? 0) + 1;
+        }
+
         if ($meta) {
             if (!empty($meta['isSupervisor'])) {
                 return ['সুপারিশকারীর প্রস্তাব', '#d1f4ff', '#0883a3', 'tabler-clipboard-check'];
             }
-            return ['স্বাক্ষরকারীর প্রস্তাব (ধাপ ' . banglaNumber((int)$meta['serial']) . ')',
+            return ['অনুমোদনকারীর প্রস্তাব (ধাপ ' . banglaNumber((int)$meta['serial']) . ')',
                     '#d8f5e3', '#1a7e44', 'tabler-circle-check'];
         }
         return ['প্রশাসনিক ডেস্ক (ছুটি সম্পাদনা)', '#ede5fa', '#5e3eaa', 'tabler-user-edit'];
