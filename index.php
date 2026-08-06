@@ -412,7 +412,12 @@ foreach (['login-side.jpg', 'login-side.jpeg', 'login-side.png', 'login-side.web
             font-family: inherit;
             box-shadow: 0 5px 16px rgba(115, 103, 240, 0.3);
         }
-        .swal2-container .swal2-styled.swal2-confirm:hover { background-color: var(--accent-dark); }
+        /* The theme darkens :hover with a translucent black gradient; drop it
+           so the button lands on exactly --accent-dark. */
+        .swal2-container .swal2-styled.swal2-confirm:hover {
+            background-color: var(--accent-dark);
+            background-image: none;
+        }
         .swal2-container .swal2-styled:focus { outline: none; box-shadow: 0 0 0 4px var(--accent-soft); }
 
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -468,7 +473,7 @@ foreach (['login-side.jpg', 'login-side.jpeg', 'login-side.png', 'login-side.web
                         </button>
                     </div>
 
-                    <a href="#" class="forgot" onclick="event.preventDefault(); Swal.fire({icon:'info',title:'পাসওয়ার্ড সহায়তা',text:'পাসওয়ার্ড পুনরুদ্ধারের জন্য আপনার সংশ্লিষ্ট কেন্দ্রের প্রশাসন বিভাগের সাথে যোগাযোগ করুন।',confirmButtonColor:'#7367f0'});">পাসওয়ার্ড ভুলে গেছেন?</a>
+                    <a href="#" class="forgot" onclick="event.preventDefault(); swalShow({icon:'info',title:'পাসওয়ার্ড সহায়তা',text:'পাসওয়ার্ড পুনরুদ্ধারের জন্য আপনার সংশ্লিষ্ট কেন্দ্রের প্রশাসন বিভাগের সাথে যোগাযোগ করুন।'});">পাসওয়ার্ড ভুলে গেছেন?</a>
 
                     <div class="remember-row">
                         <span class="lbl">লগইন তথ্য মনে রাখুন</span>
@@ -516,14 +521,22 @@ $(function() {
         $('#pwdEyeIcon').toggleClass('tabler-eye-off tabler-eye');
     });
 
+    // The theme's sweetalert2 bundle ships a baked-in
+    // Swal.mixin({buttonsStyling: false, customClass: {confirmButton: 'btn btn-primary'}}),
+    // which expects Bootstrap. This page doesn't load core.css, so hand the
+    // buttons back to SweetAlert's own classes and style them in CSS.
+    function swalShow(opts) {
+        return Swal.fire($.extend({ buttonsStyling: true, customClass: {} }, opts));
+    }
+
     function swalError(text) {
-        Swal.fire({
+        swalShow({
             icon: 'error',
             title: 'ত্রুটি',
-            text: text,
-            confirmButtonColor: '#7367f0'
+            text: text
         });
     }
+    window.swalShow = swalShow;
 
     $form.on('submit', function(e) {
         e.preventDefault();
