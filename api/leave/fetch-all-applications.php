@@ -211,29 +211,38 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
     $totalReqDays          = dateDiffInDays($row['dateFrom'], $row['dateTo']) + 1;
 
     // Check for multi-segment — if exists, build per-segment breakdown.
-    // Filter to proposed-only (or NULL kind for legacy rows) so we don't
-    // count both proposed and approved copies of the same segment.
+    // This column is চাহিত ছুটি, so it must read the frozen 'requested' rows;
+    // the 'proposed' copies track what the desks have since edited and would
+    // contradict the applicant's own date range and total. Legacy rows predate
+    // the kind column, so fall back to those when no requested rows exist.
     $_segStmt = mysqli_prepare($con,
-        "SELECT s.days, lt.leaveTitle
+        "SELECT s.kind, s.days, lt.leaveTitle
          FROM leave_application_segments s
          LEFT JOIN leave_types lt ON s.leaveType = lt.leaveID
          WHERE s.applicationID = ?
-           AND (s.kind = 'proposed' OR s.kind IS NULL)
          ORDER BY s.serial ASC, s.dataID ASC");
     mysqli_stmt_bind_param($_segStmt, 'i', $row['dataID']);
     mysqli_stmt_execute($_segStmt);
     $_segRes = mysqli_stmt_get_result($_segStmt);
-    $_segs = [];
-    while ($_sr = mysqli_fetch_assoc($_segRes)) $_segs[] = $_sr;
+    $_reqSegs = [];
+    $_oldSegs = [];
+    while ($_sr = mysqli_fetch_assoc($_segRes)) {
+        if ($_sr['kind'] === 'requested')      $_reqSegs[] = $_sr;
+        elseif ($_sr['kind'] === null || $_sr['kind'] === '') $_oldSegs[] = $_sr;
+    }
     mysqli_stmt_close($_segStmt);
+    $_segs = $_reqSegs ?: $_oldSegs;
 
     $reqDateRange = '<div class="date-range"><i class="ti tabler-calendar"></i><span>' . banglaNumber(date_format($leaveApplicationDateF, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($leaveApplicationDateT, "d/m/Y")) . '</span></div>';
     if (count($_segs) > 1) {
         $segParts = array_map(function($sg) {
             return '<span class="seg-pill">' . banglaNumber((int)$sg['days']) . ' দিন ' . htmlspecialchars($sg['leaveTitle'] ?? 'অজানা') . '</span>';
         }, $_segs);
+        // Sum the segments rather than spanning the date range, so a gap
+        // between segments can't leave the total disagreeing with the chips.
+        $segTotalDays = array_sum(array_map(function($sg) { return (int)$sg['days']; }, $_segs));
         $requested_leave = $reqDateRange
-                         . '<div class="leave-meta"><span class="days-pill">মোট ' . banglaNumber($totalReqDays) . ' দিন</span></div>'
+                         . '<div class="leave-meta"><span class="days-pill">মোট ' . banglaNumber($segTotalDays) . ' দিন</span></div>'
                          . '<div class="seg-list">' . implode(' ', $segParts) . '</div>';
     } else {
         $requested_leave = $reqDateRange
