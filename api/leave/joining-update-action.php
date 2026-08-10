@@ -12,9 +12,9 @@ function out($status, $message, $extra = []) {
     exit;
 }
 
-// Backwards compatibility: legacy form returned {status:'success'} but the new form
-// expects {status:1}. We return both forms in the legacy field for safety, but the
-// canonical field is `status` as integer (0/1).
+// `status` is an integer, 0 or 1. Never pass a `status` key through out()'s
+// $extra — array_merge lets it overwrite the real one, and the sole caller
+// tests `resp.status === 1`, so a successful forward reported itself as an error.
 
 if (!isset($_SESSION['username']) || !isset($_SESSION['userID'])) {
     out(0, 'আপনি লগইন করেননি!');
@@ -167,7 +167,7 @@ try {
         ]);
     }
 
-    out(1, 'যোগদান পত্র সাইনেটরি চেইনে forwarded হয়েছে', ['status' => 'success']);
+    out(1, 'যোগদান পত্র সাইনেটরি চেইনে forwarded হয়েছে');
 
 } catch (Exception $e) {
     mysqli_rollback($con);
