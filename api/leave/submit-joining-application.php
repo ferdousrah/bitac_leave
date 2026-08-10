@@ -255,7 +255,10 @@ try {
     foreach ($chain as $entry) {
         $sigEmpID = (int)$entry['employeeID'];
         if ($sigEmpID <= 0) { $serial++; continue; }
-        if ($sigEmpID === $supervisorID) { continue; } // skip dup if supervisor also in chain
+        // The supervisor deliberately keeps their signatory seat as well — the
+        // সুপারিশ and the approval are two separate acts by the same person, and
+        // insert-application.php builds the leave chain the same way. Skipping
+        // the duplicate dropped that desk from the joining chain entirely.
 
         $snapStmt = mysqli_prepare($con,
             "SELECT organization_id, department_id, section_id, designation, pay_scale
