@@ -2,6 +2,7 @@
 session_start();
 require_once(__DIR__ . '/../../config/connection.php');
 require_once(LIBRARY_PATH . '/number_converter.php');
+require_once(__DIR__ . '/../../includes/joining-effective-leave.php');
 
 function dateDiffInDays($date1, $date2) {
     $diff = strtotime($date2) - strtotime($date1);
@@ -131,6 +132,7 @@ SELECT
     lja.status                  AS lja_status,
     lja.approvedDate            AS lja_approvedDate,
     lja.approvedLeaveType       AS lja_approvedLeaveType,
+    lja.extensionSegmentsJson   AS lja_extensionSegmentsJson,
     (lja.leaveApplicationID IS NOT NULL) AS has_joining,
     (SELECT COUNT(*) FROM leave_data_for_approval pending
        WHERE pending.leaveApplicationID = la.dataID
@@ -216,7 +218,7 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
     // contradict the applicant's own date range and total. Legacy rows predate
     // the kind column, so fall back to those when no requested rows exist.
     $_segStmt = mysqli_prepare($con,
-        "SELECT s.kind, s.days, lt.leaveTitle
+        "SELECT s.kind, s.days, s.dateFrom, s.dateTo, lt.leaveTitle
          FROM leave_application_segments s
          LEFT JOIN leave_types lt ON s.leaveType = lt.leaveID
          WHERE s.applicationID = ?
@@ -224,26 +226,41 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
     mysqli_stmt_bind_param($_segStmt, 'i', $row['dataID']);
     mysqli_stmt_execute($_segStmt);
     $_segRes = mysqli_stmt_get_result($_segStmt);
-    $_reqSegs = [];
-    $_oldSegs = [];
+    $_reqSegs  = [];
+    $_propSegs = [];
+    $_oldSegs  = [];
     while ($_sr = mysqli_fetch_assoc($_segRes)) {
-        if ($_sr['kind'] === 'requested')      $_reqSegs[] = $_sr;
+        if ($_sr['kind'] === 'requested')     $_reqSegs[]  = $_sr;
+        elseif ($_sr['kind'] === 'proposed')  $_propSegs[] = $_sr;
         elseif ($_sr['kind'] === null || $_sr['kind'] === '') $_oldSegs[] = $_sr;
     }
     mysqli_stmt_close($_segStmt);
     $_segs = $_reqSegs ?: $_oldSegs;
+    // What the desks settled on — drives both the approved and the spent column.
+    $_apprSegs = $_propSegs ?: $_oldSegs;
+
+    // Renders the shared "মোট N দিন" pill + per-segment chips, date-stamping the
+    // chips when the segments have gaps so the range above can't mislead.
+    $segBreakdown = function(array $segs, $pillClass) {
+        $gapped = !joining_segments_contiguous($segs);
+        $parts  = [];
+        foreach ($segs as $sg) {
+            $parts[] = '<span class="seg-pill">'
+                     . ($gapped ? joining_segment_dates($sg) . ' · ' : '')
+                     . banglaNumber((int)$sg['days']) . ' দিন '
+                     . htmlspecialchars($sg['leaveTitle'] ?? 'অজানা') . '</span>';
+        }
+        $total = array_sum(array_map(function($sg) { return (int)$sg['days']; }, $segs));
+        return '<div class="leave-meta"><span class="days-pill ' . $pillClass . '">মোট '
+             . banglaNumber($total) . ' দিন</span></div>'
+             . '<div class="seg-list">' . implode(' ', $parts) . '</div>';
+    };
 
     $reqDateRange = '<div class="date-range"><i class="ti tabler-calendar"></i><span>' . banglaNumber(date_format($leaveApplicationDateF, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($leaveApplicationDateT, "d/m/Y")) . '</span></div>';
     if (count($_segs) > 1) {
-        $segParts = array_map(function($sg) {
-            return '<span class="seg-pill">' . banglaNumber((int)$sg['days']) . ' দিন ' . htmlspecialchars($sg['leaveTitle'] ?? 'অজানা') . '</span>';
-        }, $_segs);
         // Sum the segments rather than spanning the date range, so a gap
         // between segments can't leave the total disagreeing with the chips.
-        $segTotalDays = array_sum(array_map(function($sg) { return (int)$sg['days']; }, $_segs));
-        $requested_leave = $reqDateRange
-                         . '<div class="leave-meta"><span class="days-pill">মোট ' . banglaNumber($segTotalDays) . ' দিন</span></div>'
-                         . '<div class="seg-list">' . implode(' ', $segParts) . '</div>';
+        $requested_leave = $reqDateRange . $segBreakdown($_segs, '');
     } else {
         $requested_leave = $reqDateRange
                          . '<div class="leave-meta"><span class="days-pill">' . banglaNumber($totalReqDays) . ' দিন</span>'
@@ -267,19 +284,38 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
             case 6:  $leaveTypeText = "কর্তনহীন ছুটি";              break;
             case 10: $leaveTypeText = "অসাধারণ ছুটি";              break;
         }
-        $approved_leave = '<div class="date-range"><i class="ti tabler-calendar-check"></i><span>' . banglaNumber(date_format($adateF, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($adateT, "d/m/Y")) . '</span></div>'
-                        . '<div class="leave-meta"><span class="days-pill days-pill-success">' . banglaNumber($adateDiff) . ' দিন</span>'
-                        . ' <span class="leave-type-chip">' . htmlspecialchars($row['approvedLeaveTitle']) . '</span></div>'
-                        . ($leaveTypeText ? '<div class="leave-sub">' . $leaveTypeText . '</div>' : '');
+        $approved_leave = '<div class="date-range"><i class="ti tabler-calendar-check"></i><span>' . banglaNumber(date_format($adateF, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($adateT, "d/m/Y")) . '</span></div>';
+        if (count($_apprSegs) > 1) {
+            $approved_leave .= $segBreakdown($_apprSegs, 'days-pill-success');
+        } else {
+            $approved_leave .= '<div class="leave-meta"><span class="days-pill days-pill-success">' . banglaNumber($adateDiff) . ' দিন</span>'
+                             . ' <span class="leave-type-chip">' . htmlspecialchars($row['approvedLeaveTitle']) . '</span></div>'
+                             . ($leaveTypeText ? '<div class="leave-sub">' . $leaveTypeText . '</div>' : '');
+        }
     }
 
     // Spent leave
     $spent_leave = '';
     $leaveSpentDateFrom = null;
     if ($hasJoining) {
-        $leaveSpentDateFrom = date_create($row['primaryLeaveDateFrom']);
-        $leaveSpentDateTo   = date_create($row['requestedJoiningDate']);
-        $leaveSpent         = dateDiffInDays($row['primaryLeaveDateFrom'], $row['requestedJoiningDate']) + 1;
+        // Project the approved segments through the joining rules instead of
+        // spanning the dates — a gap between segments isn't leave, and an
+        // early joining cuts the last segment short.
+        $_spentSegs = joining_effective_segments($_apprSegs, $row['joiningType'], $row['requestedJoiningDate'], [
+            'extensionSegmentsJson' => $row['lja_extensionSegmentsJson'] ?? null,
+            'approvedDateTo'        => $row['approvedDateTo'] ?? '',
+            'extLeaveType'          => $row['lja_approvedLeaveType'] ?? 0,
+        ]);
+        $_spentSpan = joining_segments_span($_spentSegs);
+        if ($_spentSpan['days'] > 0) {
+            $leaveSpentDateFrom = date_create($_spentSpan['from']);
+            $leaveSpentDateTo   = date_create($_spentSpan['to']);
+            $leaveSpent         = $_spentSpan['days'];
+        } else {
+            $leaveSpentDateFrom = date_create($row['primaryLeaveDateFrom']);
+            $leaveSpentDateTo   = date_create($row['requestedJoiningDate']);
+            $leaveSpent         = dateDiffInDays($row['primaryLeaveDateFrom'], $row['requestedJoiningDate']) + 1;
+        }
 
         $leaveTypeText = '';
         switch ($row['primaryApprovedLeaveType']) {
@@ -291,9 +327,13 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
             case 6:  $leaveTypeText = "কর্তনহীন ছুটি";              break;
             case 10: $leaveTypeText = "অসাধারণ ছুটি";              break;
         }
-        $spent_leave = '<div class="date-range"><i class="ti tabler-clock-check"></i><span>' . banglaNumber(date_format($leaveSpentDateFrom, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($leaveSpentDateTo, "d/m/Y")) . '</span></div>'
-                     . '<div class="leave-meta"><span class="days-pill days-pill-info">' . banglaNumber($leaveSpent) . ' দিন</span></div>'
-                     . ($leaveTypeText ? '<div class="leave-sub">' . $leaveTypeText . '</div>' : '');
+        $spent_leave = '<div class="date-range"><i class="ti tabler-clock-check"></i><span>' . banglaNumber(date_format($leaveSpentDateFrom, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($leaveSpentDateTo, "d/m/Y")) . '</span></div>';
+        if (count($_spentSegs) > 1) {
+            $spent_leave .= $segBreakdown($_spentSegs, 'days-pill-info');
+        } else {
+            $spent_leave .= '<div class="leave-meta"><span class="days-pill days-pill-info">' . banglaNumber($leaveSpent) . ' দিন</span></div>'
+                          . ($leaveTypeText ? '<div class="leave-sub">' . $leaveTypeText . '</div>' : '');
+        }
     }
 
     // Joining type
