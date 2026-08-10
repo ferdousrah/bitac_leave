@@ -714,6 +714,7 @@
 .status-approved { background: #e6f7ee; color: #1a7e44; border-color: #c4ebd4; }
 .status-rejected { background: #fbeaea; color: #b13c3c; border-color: #f3c9c9; }
 .status-pending  { background: #fff3e1; color: #b8651a; border-color: #f5d8aa; }
+.status-returned { background: #eef0ff; color: #4c46b8; border-color: #d3d5f7; }
 
 /* ── Action buttons ──────────────────────────────────── */
 .action-btn {

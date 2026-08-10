@@ -163,13 +163,15 @@ try {
             mysqli_stmt_close($fwd);
         }
 
-        // Check if any non-supervisor chain rows remain pending
-        // (after supervisor approves, count only chain rows that have been admin-forwarded)
+        // Check whether any desk is still to act. Count every unapproved row,
+        // including ones the admin hasn't forwarded yet: for Type 2/3 the chain
+        // rows sit at isSentbyAdmin = 0 until admin review, so gating on the
+        // "who can act right now" filter used elsewhere would read the
+        // supervisor's সুপারিশ as the end of the workflow and finalize early.
         $remStmt = mysqli_prepare($con,
             "SELECT COUNT(*) c FROM leave_joining_data_for_approval
              WHERE leaveApplicationID = ?
-               AND isApproved = 0
-               AND (isSupervisor = 1 OR isSentbyAdmin = 1)");
+               AND isApproved = 0");
         mysqli_stmt_bind_param($remStmt, 'i', $leaveAppID);
         mysqli_stmt_execute($remStmt);
         $remaining = (int)(mysqli_fetch_assoc(mysqli_stmt_get_result($remStmt))['c'] ?? 0);

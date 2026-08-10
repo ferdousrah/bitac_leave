@@ -68,7 +68,7 @@ $totalRecordsResult = mysqli_query($con, $totalRecordsQuery);
 $totalRecords = mysqli_fetch_assoc($totalRecordsResult)['total'] ?? 0;
 
 // Fetch data
-$dataQuery = "SELECT lj.*, lja.*, la.*, el.employee_name, el.employee_id AS emp_code, el.photo, el.designation, el.section_id, el.organization_id,
+$dataQuery = "SELECT lj.*, lja.*, la.*, lja.status AS joining_status, el.employee_name, el.employee_id AS emp_code, el.photo, el.designation, el.section_id, el.organization_id,
     jt.job_title_name, s.section_name, o.organization_name
     $baseQuery $searchQuery
     ORDER BY lj.dataID DESC
@@ -139,12 +139,17 @@ while ($empRow = mysqli_fetch_array($dataResult)) {
         }
 
         // Status pill
+        // lja and la both carry a `status`, and la.* wins the wildcard collision —
+        // which reported the parent leave's status instead of the joining's, so a
+        // joining still awaiting its chain read as অনুমোদিত. Use the alias.
         $statusBadge = '';
-        if ($empRow['status'] == 1) {
+        if ($empRow['joining_status'] == 1) {
             $statusBadge = '<span class="status-pill status-approved"><i class="ti tabler-check me-1"></i>অনুমোদিত</span>';
-        } else if ($empRow['status'] == 2) {
+        } else if ($empRow['joining_status'] == 2) {
             $statusBadge = '<span class="status-pill status-rejected"><i class="ti tabler-x me-1"></i>অনুমোদিত হয়নি</span>';
-        } else if ($empRow['status'] == 0) {
+        } else if ($empRow['joining_status'] == 3) {
+            $statusBadge = '<span class="status-pill status-returned"><i class="ti tabler-arrow-back-up me-1"></i>পুনঃ যাচাই</span>';
+        } else if ($empRow['joining_status'] == 0) {
             $statusBadge = '<span class="status-pill status-pending"><i class="ti tabler-hourglass me-1"></i>অপেক্ষমান</span>';
         }
 
