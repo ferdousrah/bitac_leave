@@ -54,6 +54,7 @@ function generatePDFData($leaveApplicationID) {
     try {
         require_once(__DIR__ . '/../../../connection.php');
         require_once(__DIR__ . '/../../../library/number_converter.php');
+        require_once(__DIR__ . '/../../../includes/joining-effective-leave.php');
 
         // Load mPDF
         $autoload_paths = [
@@ -140,14 +141,42 @@ function generatePDFData($leaveApplicationID) {
         $stmt->close();
         
         // Calculate dates
-        $dateDiff = dateDiffInDays($leaveData['approvedDateFrom'], $leaveData['approvedDateTo']) + 1;
         $dateF = date_create($leaveData['dateFrom']);
         $approvedDateTo = date_create($leaveData['approvedDateTo']);
         $joiningDate = date_create($joiningData['requestedJoiningDate']);
         $submitDate = date_create($joiningData['submitDate']);
-        
-        // Calculate requested extended days
-        $dateDiffRequest = dateDiffInDays($leaveData['approvedDateFrom'], $joiningData['requestedJoiningDate']) + 1;
+
+        // Day counts come from the approved segments, not the calendar span —
+        // a leave with gaps between its segments covers more dates than it grants.
+        $segRows = [];
+        $segRes = mysqli_query($con, "SELECT dateFrom, dateTo, days
+                                      FROM leave_application_segments
+                                      WHERE applicationID = " . (int)$leaveApplicationID . "
+                                        AND (kind = 'proposed' OR kind IS NULL)
+                                      ORDER BY serial ASC, dataID ASC");
+        if ($segRes) while ($segRow = mysqli_fetch_assoc($segRes)) $segRows[] = $segRow;
+        $segApprovedDays = array_sum(array_column($segRows, 'days'));
+        $dateDiff = $segApprovedDays > 0
+            ? (int)$segApprovedDays
+            : dateDiffInDays($leaveData['approvedDateFrom'], $leaveData['approvedDateTo']) + 1;
+
+        // Requested total — the approved segments plus the extension being asked
+        // for, projected the same way the joining approval will apply it.
+        $totalSegs = joining_effective_segments($segRows, 3, $joiningData['requestedJoiningDate'], [
+            'extensionSegmentsJson' => $joiningData['extensionSegmentsJson'] ?? null,
+            'approvedDateTo'        => $leaveData['approvedDateTo'] ?? '',
+            'extLeaveType'          => $joiningData['approvedLeaveType'] ?? 0,
+        ]);
+        $totalSpan = joining_segments_span($totalSegs);
+        if ($totalSpan['days'] > 0) {
+            $dateDiffRequest = $totalSpan['days'];
+            $totalFrom       = date_create($totalSpan['from']);
+            $totalTo         = date_create($totalSpan['to']);
+        } else {
+            $dateDiffRequest = dateDiffInDays($leaveData['approvedDateFrom'], $joiningData['requestedJoiningDate']) + 1;
+            $totalFrom       = date_create($leaveData['approvedDateFrom']);
+            $totalTo         = date_create($joiningData['requestedJoiningDate']);
+        }
         
         // Get supervisor approval
         $stmt = $con->prepare("SELECT * FROM leave_joining_data_for_approval WHERE leaveApplicationID = ? AND serial = '1'");
@@ -235,8 +264,8 @@ function generatePDFData($leaveApplicationID) {
         
         // Second paragraph
         $html .= '<p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;অতএব, মহোদয়ের নিকট বিনীত নিবেদন উপর্যুক্ত বিষয়টি বিবেচনাপূর্বক আমাকে ';
-        $html .= banglaNumber(date_format($dateF, "d/m/Y"));
-        $html .= ' থেকে ' . banglaNumber(date_format($joiningDate, "d/m/Y"));
+        $html .= banglaNumber(date_format($totalFrom, "d/m/Y"));
+        $html .= ' থেকে ' . banglaNumber(date_format($totalTo, "d/m/Y"));
         $html .= ' তারিখ পর্যন্ত ' . banglaNumber($dateDiffRequest);
         $html .= ' দিনের ' . htmlspecialchars($leaveTypeData['leaveTitle']);
         $html .= ' ছুটি মঞ্জুরকরতঃ আমাকে কর্মস্থলে যোগদানের অনুমতি প্রদান করে বাধিত করবেন।</p>';

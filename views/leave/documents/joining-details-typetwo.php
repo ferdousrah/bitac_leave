@@ -54,6 +54,7 @@ function generatePDFData($leaveApplicationID) {
     try {
         require_once(__DIR__ . '/../../../connection.php');
         require_once(__DIR__ . '/../../../library/number_converter.php');
+        require_once(__DIR__ . '/../../../includes/joining-effective-leave.php');
 
         // Load mPDF
         $autoload_paths = [
@@ -133,14 +134,40 @@ function generatePDFData($leaveApplicationID) {
         $stmt->close();
         
         // Calculate dates
-        $dateDiff = dateDiffInDays($leaveData['primaryLeaveDateFrom'], $leaveData['primaryLeaveDateTo']) + 1;
         $dateF = date_create($leaveData['primaryLeaveDateFrom']);
         $approvedDateTo = date_create($leaveData['primaryLeaveDateTo']);
         $joiningDate = date_create($joiningData['requestedJoiningDate']);
         $submitDate = date_create($joiningData['submitDate']);
-        
-        // Calculate requested days (early return)
-        $dateDiffRequest = dateDiffInDays($leaveData['approvedDateFrom'], $joiningData['requestedJoiningDate']) + 1;
+
+        // Day counts come from the approved segments, not the calendar span —
+        // a leave with gaps between its segments covers more dates than it grants.
+        $segRows = [];
+        $segRes = mysqli_query($con, "SELECT dateFrom, dateTo, days
+                                      FROM leave_application_segments
+                                      WHERE applicationID = " . (int)$leaveApplicationID . "
+                                        AND (kind = 'proposed' OR kind IS NULL)
+                                      ORDER BY serial ASC, dataID ASC");
+        if ($segRes) while ($segRow = mysqli_fetch_assoc($segRes)) $segRows[] = $segRow;
+
+        $segApprovedDays = array_sum(array_column($segRows, 'days'));
+        $dateDiff = $segApprovedDays > 0
+            ? (int)$segApprovedDays
+            : dateDiffInDays($leaveData['primaryLeaveDateFrom'], $leaveData['primaryLeaveDateTo']) + 1;
+
+        // Requested days (early return) — project the segments through the same
+        // rule the joining approval applies, so the letter states what will
+        // actually be granted.
+        $spentSegs = joining_effective_segments($segRows, 2, $joiningData['requestedJoiningDate']);
+        $spentSpan = joining_segments_span($spentSegs);
+        if ($spentSpan['days'] > 0) {
+            $dateDiffRequest = $spentSpan['days'];
+            $spentFrom       = date_create($spentSpan['from']);
+            $spentTo         = date_create($spentSpan['to']);
+        } else {
+            $dateDiffRequest = dateDiffInDays($leaveData['approvedDateFrom'], $joiningData['requestedJoiningDate']) + 1;
+            $spentFrom       = date_create($leaveData['approvedDateFrom']);
+            $spentTo         = date_create($joiningData['requestedJoiningDate']);
+        }
         
         // Get supervisor approval
         $stmt = $con->prepare("SELECT * FROM leave_joining_data_for_approval WHERE leaveApplicationID = ? AND serial = '1'");
@@ -223,15 +250,15 @@ function generatePDFData($leaveApplicationID) {
         $html .= ' থেকে ' . banglaNumber(date_format($approvedDateTo, "d/m/Y"));
         $html .= ' তারিখ পর্যন্ত, ' . banglaNumber($dateDiff);
         $html .= ' দিনের ছুটি পূর্ণ ভোগ না করে ';
-        $html .= banglaNumber(date_format($dateF, "d/m/Y"));
-        $html .= ' থেকে ' . banglaNumber(date_format($joiningDate, "d/m/Y"));
+        $html .= banglaNumber(date_format($spentFrom, "d/m/Y"));
+        $html .= ' থেকে ' . banglaNumber(date_format($spentTo, "d/m/Y"));
         $html .= ' তারিখ পর্যন্ত, ' . banglaNumber($dateDiffRequest);
         $html .= ' দিনের ছুটি ভোগকরতঃ অদ্য কর্মস্থলে যোগদান করতে ইচ্ছুক।</p>';
         
         // Second paragraph
         $html .= '<p>&nbsp;&nbsp;&nbsp;অতএব, মহোদয়ের নিকট বিনীত নিবেদন উপর্যুক্ত বিষয়টি বিবেচনাপূর্বক আমাকে আমার ভোগকৃত ';
-        $html .= banglaNumber(date_format($dateF, "d/m/Y"));
-        $html .= ' থেকে ' . banglaNumber(date_format($joiningDate, "d/m/Y"));
+        $html .= banglaNumber(date_format($spentFrom, "d/m/Y"));
+        $html .= ' থেকে ' . banglaNumber(date_format($spentTo, "d/m/Y"));
         $html .= ' তারিখ পর্যন্ত, ' . banglaNumber($dateDiffRequest);
         $html .= ' দিনের ছুটি মঞ্জুরকরতঃ আমাকে কর্মস্থলে যোগদানের অনুমতি প্রদান করে বাধিত করবেন।</p>';
         

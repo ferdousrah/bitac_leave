@@ -54,6 +54,7 @@ function generatePDFData($leaveApplicationID) {
     try {
         require_once(__DIR__ . '/../../../connection.php');
         require_once(__DIR__ . '/../../../library/number_converter.php');
+        require_once(__DIR__ . '/../../../includes/joining-effective-leave.php');
 
         // Load mPDF
         $autoload_paths = [
@@ -133,9 +134,22 @@ function generatePDFData($leaveApplicationID) {
         $stmt->close();
         
         // Calculate dates
-        $dateDiff = dateDiffInDays($leaveData['dateFrom'], $leaveData['dateTo']) + 1;
         $dateF = date_create($leaveData['dateFrom']);
         $dateT = date_create($leaveData['dateTo']);
+
+        // Day counts come from the approved segments, not the calendar span —
+        // a leave with gaps between its segments covers more dates than it grants.
+        $segRows = [];
+        $segRes = mysqli_query($con, "SELECT dateFrom, dateTo, days
+                                      FROM leave_application_segments
+                                      WHERE applicationID = " . (int)$leaveApplicationID . "
+                                        AND (kind = 'proposed' OR kind IS NULL)
+                                      ORDER BY serial ASC, dataID ASC");
+        if ($segRes) while ($segRow = mysqli_fetch_assoc($segRes)) $segRows[] = $segRow;
+        $segApprovedDays = array_sum(array_column($segRows, 'days'));
+        $dateDiff = $segApprovedDays > 0
+            ? (int)$segApprovedDays
+            : dateDiffInDays($leaveData['dateFrom'], $leaveData['dateTo']) + 1;
         $submitDate = date_create($joiningData['submitDate']);
         
         // Get supervisor approval
