@@ -4,6 +4,7 @@ header('Content-Type: application/json');
 
 require_once(__DIR__ . '/../../connection.php');
 require_once(__DIR__ . '/../../library/number_converter.php');
+require_once(__DIR__ . '/../../includes/joining-effective-leave.php');
 
 // Disable error display for clean JSON response
 error_reporting(0);
@@ -68,7 +69,7 @@ $totalRecordsResult = mysqli_query($con, $totalRecordsQuery);
 $totalRecords = mysqli_fetch_assoc($totalRecordsResult)['total'] ?? 0;
 
 // Fetch data
-$dataQuery = "SELECT lj.*, lja.*, la.*, lja.status AS joining_status, el.employee_name, el.employee_id AS emp_code, el.photo, el.designation, el.section_id, el.organization_id,
+$dataQuery = "SELECT lj.*, lja.*, la.*, lja.status AS joining_status, lja.approvedLeaveType AS joining_ext_leave_type, el.employee_name, el.employee_id AS emp_code, el.photo, el.designation, el.section_id, el.organization_id,
     jt.job_title_name, s.section_name, o.organization_name
     $baseQuery $searchQuery
     ORDER BY lj.dataID DESC
@@ -87,10 +88,36 @@ while ($empRow = mysqli_fetch_array($dataResult)) {
         $adateT = date_create($empRow['primaryLeaveDateTo']);
         $adateDiff = dateDiffInDays($empRow['primaryLeaveDateFrom'], $empRow['primaryLeaveDateTo']) + 1;
 
-        // ভোগকৃত ছুটি
-        $leaveSpentDateFrom = date_create($empRow['approvedDateFrom']);
-        $leaveSpentDateTo = date_create($empRow['requestedJoiningDate']);
-        $leaveSpent = dateDiffInDays($empRow['approvedDateFrom'], $empRow['requestedJoiningDate']) + 1;
+        // ভোগকৃত ছুটি — project the approved segments through the joining rules
+        // rather than spanning approvedDateFrom → requestedJoiningDate, which
+        // counts the gaps between segments as leave.
+        $__aid = intval($empRow['leaveApplicationID']);
+        $__segs = [];
+        $__segRes = mysqli_query($con, "SELECT s.dateFrom, s.dateTo, s.days, s.serial, lt.leaveTitle
+                                         FROM leave_application_segments s
+                                         LEFT JOIN leave_types lt ON s.leaveType = lt.leaveID
+                                         WHERE s.applicationID = $__aid
+                                           AND (s.kind = 'proposed' OR s.kind IS NULL)
+                                         ORDER BY s.serial ASC, s.dataID ASC");
+        if ($__segRes) while ($__sr = mysqli_fetch_assoc($__segRes)) $__segs[] = $__sr;
+
+        $__spentSegs = joining_effective_segments($__segs, $empRow['joiningType'], $empRow['requestedJoiningDate'], [
+            'extensionSegmentsJson' => $empRow['extensionSegmentsJson'] ?? null,
+            'approvedDateTo'        => $empRow['approvedDateTo'] ?? '',
+            'extLeaveType'          => $empRow['joining_ext_leave_type'] ?? 0,
+        ]);
+        $__spentSpan = joining_segments_span($__spentSegs);
+
+        if ($__spentSpan['days'] > 0) {
+            $leaveSpentDateFrom = date_create($__spentSpan['from']);
+            $leaveSpentDateTo   = date_create($__spentSpan['to']);
+            $leaveSpent         = $__spentSpan['days'];
+        } else {
+            // Legacy rows with no segments at all
+            $leaveSpentDateFrom = date_create($empRow['approvedDateFrom']);
+            $leaveSpentDateTo   = date_create($empRow['requestedJoiningDate']);
+            $leaveSpent         = dateDiffInDays($empRow['approvedDateFrom'], $empRow['requestedJoiningDate']) + 1;
+        }
 
         // সংশোধিত ছুটি
         $correctedLeaveHtml = '';
@@ -220,16 +247,6 @@ while ($empRow = mysqli_fetch_array($dataResult)) {
 
         // Multi-segment breakdown for the primary (approved) leave — same
         // seg-list convention as the other approval queues.
-        $__aid = intval($empRow['leaveApplicationID']);
-        $__segs = [];
-        $__segRes = mysqli_query($con, "SELECT s.days, lt.leaveTitle
-                                         FROM leave_application_segments s
-                                         LEFT JOIN leave_types lt ON s.leaveType = lt.leaveID
-                                         WHERE s.applicationID = $__aid
-                                           AND (s.kind = 'proposed' OR s.kind IS NULL)
-                                         ORDER BY s.serial ASC, s.dataID ASC");
-        if ($__segRes) while ($__sr = mysqli_fetch_assoc($__segRes)) $__segs[] = $__sr;
-
         // Primary leave (date + days + type chip)
         $primaryHtml = '<div class="date-range"><i class="ti tabler-calendar-check"></i><span>' . banglaNumber(date_format($adateF, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($adateT, "d/m/Y")) . '</span></div>';
         if (count($__segs) > 1) {
@@ -249,9 +266,18 @@ while ($empRow = mysqli_fetch_array($dataResult)) {
 
         // Spent leave
         $spentHtml = '<div class="date-range"><i class="ti tabler-clock-check"></i><span>' . banglaNumber(date_format($leaveSpentDateFrom, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($leaveSpentDateTo, "d/m/Y")) . '</span></div>'
-                   . '<div class="leave-meta"><span class="days-pill days-pill-info">' . banglaNumber($leaveSpent) . ' দিন</span>'
-                   . ($leaveTypeText ? ' <span class="leave-type-chip">' . htmlspecialchars($leaveTypeText) . '</span>' : '')
+                   . '<div class="leave-meta"><span class="days-pill days-pill-info">'
+                   . (count($__spentSegs) > 1 ? 'মোট ' : '') . banglaNumber($leaveSpent) . ' দিন</span>'
+                   . (count($__spentSegs) > 1 || !$leaveTypeText ? '' : ' <span class="leave-type-chip">' . htmlspecialchars($leaveTypeText) . '</span>')
                    . '</div>';
+        if (count($__spentSegs) > 1) {
+            $__spentParts = [];
+            foreach ($__spentSegs as $__sg) {
+                $__spentParts[] = '<span class="seg-pill">' . banglaNumber((int)$__sg['days']) . ' দিন '
+                                . htmlspecialchars($__sg['leaveTitle'] ?? 'অজানা') . '</span>';
+            }
+            $spentHtml .= '<div class="seg-list">' . implode(' ', $__spentParts) . '</div>';
+        }
 
         // Corrected leave (already built in $correctedLeaveHtml — convert plain text to date-range pill if present)
         if (!empty($correctedLeaveHtml) && !empty($empRow['approvedDate'])) {
