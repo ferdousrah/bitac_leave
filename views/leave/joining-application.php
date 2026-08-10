@@ -405,12 +405,12 @@ $meta = $typeMeta[$joiningType];
                     <label class="col-md-3 col-form-label">
                         বর্ধিত অংশের ছুটি <span class="text-danger">*</span>
                         <div class="ext-total-inline mt-1">
-                            <span class="ext-pill ext-target">
+                            <span class="ext-pill ext-target" title="অনুমোদিত শেষ তারিখের পরদিন থেকে যোগদানের তারিখ পর্যন্ত হিসাব করা">
                                 <i class="ti tabler-calendar-clock me-1"></i>
-                                মোট <strong id="extTotalTarget">০</strong> দিন
+                                প্রয়োজন <strong id="extTotalTarget">০</strong> দিন
                             </span>
-                            <span class="ext-pill ext-given">
-                                বন্টিত <strong id="extTotalGiven">০</strong>
+                            <span class="ext-pill ext-given" title="নিচের সারিগুলোতে দেওয়া দিনের যোগফল">
+                                বন্টিত <strong id="extTotalGiven">০</strong> দিন
                             </span>
                             <span id="extBalanceHint" class="ext-pill ext-warn" style="display:none;">
                                 <i class="ti tabler-alert-triangle me-1"></i><span id="extBalanceHintText"></span>
@@ -631,7 +631,7 @@ $meta = $typeMeta[$joiningType];
             } else if (given < totalTarget) {
                 $hint.show(); $hintTxt.text('আরও ' + beNum(totalTarget - given) + ' দিন যোগ করুন');
             } else {
-                $hint.show(); $hintTxt.text(beNum(given - totalTarget) + ' দিন অতিরিক্ত');
+                $hint.show(); $hintTxt.text(beNum(given - totalTarget) + ' দিন অতিরিক্ত — দিন কমান বা যোগদানের তারিখ পেছান');
             }
             // Refresh preview (uses rows' contents)
             var d = $('#joiningDate').val();
@@ -906,7 +906,22 @@ $meta = $typeMeta[$joiningType];
                     return;
                 }
                 if (given !== target) {
-                    Swal.fire({title:'ত্রুটি', text:'সারিগুলোর মোট দিন (' + given + ') বর্ধিত মোট দিনের (' + target + ') সমান হতে হবে', icon:'error',
+                    // Spell out where `target` comes from — on its own the old
+                    // "(2) must equal (1)" said nothing about the joining date
+                    // being what decides it.
+                    var extFromIso = addDays(approvedToIso, 1);
+                    var joinIsoNow = displayToIso($('#joiningDate').val()) || '';
+                    var spanTxt = (extFromIso === joinIsoNow)
+                        ? 'কেবল <strong>' + beNum(isoToDisplay(joinIsoNow)) + '</strong>'
+                        : '<strong>' + beNum(isoToDisplay(extFromIso)) + '</strong> থেকে <strong>'
+                          + beNum(isoToDisplay(joinIsoNow)) + '</strong> পর্যন্ত';
+                    Swal.fire({
+                        title: 'দিনের হিসাব মিলছে না',
+                        html: 'যোগদানের তারিখ <strong>' + beNum(isoToDisplay(joinIsoNow)) + '</strong> হলে বর্ধিত অংশ চলবে '
+                            + spanTxt + ' — অর্থাৎ <strong>' + beNum(target) + ' দিন</strong>।<br>'
+                            + 'সারিগুলোতে দেওয়া আছে <strong>' + beNum(given) + ' দিন</strong>।<br><br>'
+                            + '<span class="text-muted">সারির দিন সংখ্যা বদলে মিলিয়ে নিন, অথবা যোগদানের তারিখ পরিবর্তন করুন।</span>',
+                        icon: 'error',
                         confirmButtonColor:'#dc3545', customClass:{confirmButton:'btn btn-danger'}, buttonsStyling:false});
                     return;
                 }
