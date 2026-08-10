@@ -227,6 +227,8 @@ function be_num($n) {
 
 .orig-table th, .orig-table td { background: #fffaf0; }
 .orig-table th { background: #fde0a8; color: #8b6f47; }
+/* .orig-table td above paints every cell, hiding anything set on the <tr>. */
+.orig-table .seg-total td { background: #fde0a8; color: #6b4910; font-weight: 700; }
 .prop-table th { background: #e6f7ee; color: #2a6c45; }
 
 .note-box {
@@ -370,7 +372,7 @@ function be_num($n) {
             <?php else: ?>
                 <tr><td colspan="5" class="text-center text-muted">—</td></tr>
             <?php endif; ?>
-                <tr style="background:#fde0a8; font-weight:700; color:#6b4910;">
+                <tr class="seg-total">
                     <td colspan="4">মোট</td>
                     <td class="text-end"><?= be_num($origTotal) ?> দিন</td>
                 </tr>

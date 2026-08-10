@@ -199,6 +199,10 @@ $meta = $typeMeta[$joiningType];
 .preview-table .truncated td { background: #fff9e6; }
 .preview-table .deleted td { background: #fff1f0; color: #a52a2a; text-decoration: line-through; }
 .preview-table .new-seg td { background: #e9e3ff; font-weight: 600; }
+/* .preview-table td above paints every cell, hiding anything set on the <tr> —
+   so the total row has to be coloured on the td like the status rows. */
+.preview-table .seg-total td { background: #1a7e44; color: #fff; font-weight: 700; }
+.orig-table .seg-total td { background: #fde0a8; color: #6b4910; font-weight: 700; }
 
 .applicant-reason {
     background: #fffaf0;
@@ -283,7 +287,7 @@ $meta = $typeMeta[$joiningType];
                     <td class="text-end"><strong><?= be_num($sg['days']) ?></strong></td>
                 </tr>
             <?php endforeach; ?>
-                <tr style="background:#fde0a8; font-weight:700; color:#6b4910;">
+                <tr class="seg-total">
                     <td colspan="4">মোট</td>
                     <td class="text-end"><?= be_num($origTotal) ?> দিন</td>
                 </tr>
@@ -502,7 +506,7 @@ $meta = $typeMeta[$joiningType];
                     + '<td>' + badge + '</td>'
                     + '</tr>';
             });
-            html += '<tr style="background:#1a7e44; color:#fff; font-weight:700;"><td colspan="4">নতুন মোট</td><td class="text-end">' + beNum(newTotal) + ' দিন</td><td></td></tr>';
+            html += '<tr class="seg-total"><td colspan="4">নতুন মোট</td><td class="text-end">' + beNum(newTotal) + ' দিন</td><td></td></tr>';
             $body.html(html);
 
             var delta = newTotal - origTotal;
