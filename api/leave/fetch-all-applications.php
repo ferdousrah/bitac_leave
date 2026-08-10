@@ -627,21 +627,21 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
 
     if ($hasJoining) {
         if ($row['joiningType'] == 1) {
-            $actions .= '<li><a class="dropdown-item" target="_blank" href="leave_joining_application_details?menuslug=all-leave-application&leaveApplicationID=' . $row['dataID'] . '">
+            $actions .= '<li><a class="dropdown-item" target="_blank" href="../../views/leave/documents/joining-details.php?menuslug=all-leave-application&leaveApplicationID=' . $row['dataID'] . '">
                     <i class="ti tabler-file-check me-2"></i>যোগদান পত্র
                 </a></li>';
         } else if ($row['joiningType'] == 2) {
-            $actions .= '<li><a class="dropdown-item" target="_blank" href="leave_joining_application_details_typetwo?menuslug=all-leave-application&leaveApplicationID=' . $row['dataID'] . '">
+            $actions .= '<li><a class="dropdown-item" target="_blank" href="../../views/leave/documents/joining-details-typetwo.php?menuslug=all-leave-application&leaveApplicationID=' . $row['dataID'] . '">
                     <i class="ti tabler-file-check me-2"></i>যোগদান পত্র
                 </a></li>';
         } else if ($row['joiningType'] == 3) {
-            $actions .= '<li><a class="dropdown-item" target="_blank" href="leave_joining_application_details_typethree?menuslug=all-leave-application&leaveApplicationID=' . $row['dataID'] . '">
+            $actions .= '<li><a class="dropdown-item" target="_blank" href="../../views/leave/documents/joining-details-typethree.php?menuslug=all-leave-application&leaveApplicationID=' . $row['dataID'] . '">
                     <i class="ti tabler-file-check me-2"></i>যোগদান পত্র
                 </a></li>';
         }
 
         if ($row['lja_status'] == 1) {
-            $actions .= '<li><a class="dropdown-item" href="updated_leave_office_notice?menuslug=all-leave-application&leaveApplicationID=' . $row['dataID'] . '" target="_blank">
+            $actions .= '<li><a class="dropdown-item" href="../../views/leave/documents/corrected-office-notice.php?menuslug=all-leave-application&leaveApplicationID=' . $row['dataID'] . '" target="_blank">
                     <i class="ti tabler-file-invoice me-2"></i>সংশোধিত অফিস আদেশ
                 </a></li>';
         }

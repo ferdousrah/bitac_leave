@@ -746,23 +746,23 @@ $getLeaveDeductionQ = mysqli_query($con, "select * from leave_deduction_history 
 
 									<?php if($getApplicationTypeQRW['joiningType'] == 1){ ?>
 
-												&nbsp;&nbsp;<a target="_blank" href="leave_joining_application_details?menuslug=all-leave-application&leaveApplicationID=<?php echo $lrow['dataID']; ?>">যোগদান পত্র</a>&nbsp;&nbsp;
+												&nbsp;&nbsp;<a target="_blank" href="../../views/leave/documents/joining-details.php?menuslug=all-leave-application&leaveApplicationID=<?php echo $lrow['dataID']; ?>">যোগদান পত্র</a>&nbsp;&nbsp;
 
 												<?php } else if($getApplicationTypeQRW['joiningType'] == 2){ ?>
 
-												&nbsp;&nbsp;<a target="_blank" href="leave_joining_application_details_typetwo?menuslug=all-leave-application&leaveApplicationID=<?php echo $lrow['dataID']; ?>">যোগদান পত্র</a>&nbsp;&nbsp;
+												&nbsp;&nbsp;<a target="_blank" href="../../views/leave/documents/joining-details-typetwo.php?menuslug=all-leave-application&leaveApplicationID=<?php echo $lrow['dataID']; ?>">যোগদান পত্র</a>&nbsp;&nbsp;
 
 												<?php } else if($getApplicationTypeQRW['joiningType'] == 3){ ?>
 
 
-												&nbsp;&nbsp;<a target="_blank" href="leave_joining_application_details_typethree?menuslug=all-leave-application&leaveApplicationID=<?php echo $lrow['dataID']; ?>">যোগদান পত্র</a>&nbsp;&nbsp;
+												&nbsp;&nbsp;<a target="_blank" href="../../views/leave/documents/joining-details-typethree.php?menuslug=all-leave-application&leaveApplicationID=<?php echo $lrow['dataID']; ?>">যোগদান পত্র</a>&nbsp;&nbsp;
 
 												<?php } ?>
 
 									<?php if($getApplicationTypeQRW['status'] == 1){ ?>
 
 
-										&nbsp;&nbsp;<a href="updated_leave_office_notice?menuslug=all-leave-application&leaveApplicationID=<?php echo $lrow['dataID']; ?>" target="_blank">সংশোধিত অফিস আদেশ</a>
+										&nbsp;&nbsp;<a href="../../views/leave/documents/corrected-office-notice.php?menuslug=all-leave-application&leaveApplicationID=<?php echo $lrow['dataID']; ?>" target="_blank">সংশোধিত অফিস আদেশ</a>
 
 
 									<?php } ?>
