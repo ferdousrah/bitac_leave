@@ -272,6 +272,33 @@ if ($myEmpID > 0) {
     $counts['leave-joining-approval'] = 0;
 }
 
+// ═══ 7. যোগদানের আবেদন সম্পাদনা (manage-approved-leaves) ═══
+// Same predicate as the page's প্রক্রিয়াধীন tab: supervisor has recommended the
+// joining, admin hasn't forwarded it on yet. Type 1 auto-forwards, so it never
+// waits here. Center-scoped for regular users; Super Admin sees all centers.
+if ($myOrgID > 0 || $isSuperAdmin) {
+    $chk = mysqli_query($con, "SHOW TABLES LIKE 'leave_joining_data_for_approval'");
+    if ($chk && mysqli_num_rows($chk) > 0) {
+        $orgClause = $isSuperAdmin ? '' : "AND la.organization_id = $myOrgID";
+        $q = mysqli_query($con, "
+            SELECT COUNT(*) AS c
+            FROM leave_joining_data_for_approval lj
+            INNER JOIN leave_joining_application lja ON lj.leaveApplicationID = lja.leaveApplicationID
+            INNER JOIN leave_applications la         ON lj.leaveApplicationID = la.dataID
+            WHERE lj.isSupervisor  = 1
+              AND lj.isApproved    = 1
+              AND lj.isSentbyAdmin = 0
+              AND lja.joiningType != 1
+              $orgClause
+        ");
+        $counts['manage-approved-leaves'] = (int)(mysqli_fetch_assoc($q)['c'] ?? 0);
+    } else {
+        $counts['manage-approved-leaves'] = 0;
+    }
+} else {
+    $counts['manage-approved-leaves'] = 0;
+}
+
 // `total` = sum of slugs under the Leave module ONLY (that's the module whose
 // parent shows #totalTask). Other-module slugs (like allowed-leave-applications
 // under Admin Panel) are returned so their individual badges work, but they
@@ -288,6 +315,7 @@ $leaveModuleSlugs = [
 $adminPanelSlugs = [
     'allowed-leave-applications',
     'optional-pre-approval-forward-queue',
+    'manage-approved-leaves',
 ];
 
 $total = 0;

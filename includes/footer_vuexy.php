@@ -367,6 +367,7 @@ function loadContent() {
                 'leave-approval',
                 'leave-joining-approval',
                 'allowed-leave-applications',
+                'manage-approved-leaves',
                 'all-leave-application'
             ];
 
