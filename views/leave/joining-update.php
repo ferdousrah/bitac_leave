@@ -45,7 +45,7 @@ $joiningType = (int)$lja['joiningType'];
 $extLeaveType = (int)$lja['approvedLeaveType'];
 
 if ($joiningType === 1) {
-    echo '<div class="alert alert-info m-4"><i class="ti tabler-info-circle me-2"></i>সঠিক সময়ে যোগদান (Type 1) এর জন্য অ্যাডমিন রিভিউ প্রয়োজন নেই — এটি সরাসরি সাইনেটরির কাছে পাঠানো হয়েছে</div>';
+    echo '<div class="alert alert-info m-4"><i class="ti tabler-info-circle me-2"></i>সঠিক সময়ে যোগদান (Type 1) এর জন্য অ্যাডমিন রিভিউ প্রয়োজন নেই — এটি সরাসরি স্বাক্ষরকারীর কাছে পাঠানো হয়েছে</div>';
     require_once(__DIR__ . '/../../includes/footer_vuexy.php');
     exit;
 }
@@ -227,7 +227,7 @@ $meta = $typeMeta[$joiningType];
             <i class="ti <?= $meta['icon'] ?> me-2 text-primary"></i>যোগদান পত্র সম্পাদনা ও Forward
         </h4>
         <div class="text-muted small mt-1 ms-1">
-            <i class="ti tabler-info-circle me-1"></i><?= htmlspecialchars($meta['title']) ?> — সম্পাদনার পর সাইনেটরি চেইনে forward করুন
+            <i class="ti tabler-info-circle me-1"></i><?= htmlspecialchars($meta['title']) ?> — সম্পাদনার পর স্বাক্ষরকারী চেইনে forward করুন
         </div>
     </div>
     <div class="col-12 col-md-5 text-md-end mt-2 mt-md-0">
@@ -261,7 +261,7 @@ $meta = $typeMeta[$joiningType];
 
         <?php if ($alreadyForwarded): ?>
             <div class="alert alert-info">
-                <i class="ti tabler-info-circle me-2"></i>এই যোগদান পত্র ইতিমধ্যে সাইনেটরি চেইনে forwarded হয়েছে। নিচে edit করে পুনরায় সাবমিট করলে updated তথ্য নিয়ে চেইনে যাবে।
+                <i class="ti tabler-info-circle me-2"></i>এই যোগদান পত্র ইতিমধ্যে স্বাক্ষরকারী চেইনে forwarded হয়েছে। নিচে edit করে পুনরায় সাবমিট করলে updated তথ্য নিয়ে চেইনে যাবে।
             </div>
         <?php endif; ?>
 
@@ -532,7 +532,7 @@ $meta = $typeMeta[$joiningType];
 
             Swal.fire({
                 title: 'নিশ্চিত?',
-                text: 'এই যোগদান পত্র সাইনেটরি চেইনে forward করা হবে।',
+                text: 'এই যোগদান পত্র স্বাক্ষরকারী চেইনে forward করা হবে।',
                 icon: 'question',
                 showCancelButton: true,
                 confirmButtonText: 'হ্যাঁ, Forward করুন',

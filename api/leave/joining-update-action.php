@@ -167,7 +167,7 @@ try {
         ]);
     }
 
-    out(1, 'যোগদান পত্র সাইনেটরি চেইনে forwarded হয়েছে');
+    out(1, 'যোগদান পত্র স্বাক্ষরকারী চেইনে forwarded হয়েছে');
 
 } catch (Exception $e) {
     mysqli_rollback($con);

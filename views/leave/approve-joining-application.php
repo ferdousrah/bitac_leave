@@ -418,7 +418,7 @@ $approvedDateTo   = $leaveApp['approvedDateTo']   ?: $leaveApp['dateTo'];
                     elseif (!$myRow)                    echo 'আপনি এই যোগদান পত্রের অনুমোদন চেইনে নেই।';
                     elseif ((int)$myRow['isSupervisor'] === 0 && (int)$myRow['isSentbyAdmin'] === 0)
                                                         echo 'সুপারভাইজারের সুপারিশ ও কেন্দ্র অ্যাডমিন কর্তৃক forwarded হওয়ার অপেক্ষায়।';
-                    else                                echo 'এই মুহূর্তে আপনার পালা নয় — পূর্বের সাইনেটরির অনুমোদনের অপেক্ষায়।';
+                    else                                echo 'এই মুহূর্তে আপনার পালা নয় — পূর্বের স্বাক্ষরকারীর অনুমোদনের অপেক্ষায়।';
                     ?>
                 </div>
             <?php else: ?>
