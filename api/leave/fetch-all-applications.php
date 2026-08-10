@@ -379,42 +379,67 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
         else if ($row['lja_status'] == 1) $status = '<span class="status-pill status-approved"><i class="ti tabler-check me-1"></i>যোগদানপত্র অনুমোদিত</span>';
         else if ($row['lja_status'] == 3) $status = '<span class="status-pill" style="background:#fff8e6;color:#8b6f47;"><i class="ti tabler-corner-up-left me-1"></i>যোগদান পত্র ফেরত</span>';
 
-        // Show current desk for pending joining (similar to সংশোধন badge)
+        // Tell the applicant where the joining letter is sitting. Walking the
+        // whole chain rather than filtering to "who may act now" matters: after
+        // the supervisor recommends, a Type 2/3 letter waits at the centre admin
+        // for forwarding, and every chain row is still isSentbyAdmin = 0 — that
+        // filter matches nothing, so the cell used to just go blank.
         if ((int)$row['lja_status'] === 0) {
             $_lid = (int)$row['dataID'];
-            $_tcq = mysqli_query($con, "SELECT COUNT(*) c FROM leave_joining_data_for_approval WHERE leaveApplicationID=$_lid");
-            $_tc = ($_tcq && $_tr = mysqli_fetch_assoc($_tcq)) ? (int)$_tr['c'] : 0;
-            $_csq = mysqli_query($con,
-                "SELECT ldfa.serial, ldfa.isSupervisor, el.employee_name, jt.job_title_name
+            $_chain = [];
+            $_cq = mysqli_query($con,
+                "SELECT ldfa.serial, ldfa.isSupervisor, ldfa.isSentbyAdmin, ldfa.isApproved,
+                        el.employee_name, jt.job_title_name
                  FROM leave_joining_data_for_approval ldfa
                  LEFT JOIN employee_list el ON ldfa.signatory = el.id
                  LEFT JOIN job_title jt     ON el.designation  = jt.id
                  WHERE ldfa.leaveApplicationID = $_lid
-                   AND ldfa.isApproved = 0
-                   AND (ldfa.isSupervisor = 1 OR ldfa.isSentbyAdmin = 1)
-                   AND NOT EXISTS (
-                       SELECT 1 FROM leave_joining_data_for_approval prev
-                       WHERE prev.leaveApplicationID = ldfa.leaveApplicationID
-                         AND prev.serial < ldfa.serial
-                         AND prev.isApproved = 0
-                   )
-                 ORDER BY ldfa.serial ASC LIMIT 1");
-            if ($_csq && $_cs = mysqli_fetch_assoc($_csq)) {
-                $_sn = trim($_cs['employee_name']  ?? '');
-                $_st = trim($_cs['job_title_name'] ?? '');
-                $_sr = (int)($_cs['serial'] ?? 0);
-                $_sup = ((int)($_cs['isSupervisor'] ?? 0) === 1);
-                if ($_sn !== '') {
-                    $_prog = ($_sr > 0 && $_tc > 0)
-                        ? ' <span style="background:#6c5ce7;color:#fff;padding:1px 6px;border-radius:0.3rem;font-size:0.65rem;margin-left:4px;">' . banglaNumber($_sr) . '/' . banglaNumber($_tc) . '</span>'
-                        : '';
-                    $status .= '<div class="mt-1 small" style="font-size:0.74rem;line-height:1.3;color:#5d3f1c;">'
-                            .  '<i class="ti tabler-user-check me-1" style="color:#b8651a;"></i>'
-                            .  '<strong>' . htmlspecialchars($_sn) . '</strong>'
-                            .  ($_st !== '' ? ' <span style="color:#8a90a6;">— ' . htmlspecialchars($_st) . '</span>' : '')
-                            .  ($_sup ? ' <span class="text-muted">(সুপারিশ)</span>' : '')
-                            .  $_prog
+                 ORDER BY ldfa.serial ASC");
+            if ($_cq) while ($_cr = mysqli_fetch_assoc($_cq)) $_chain[] = $_cr;
+
+            $_total = count($_chain);
+            $_next  = null;
+            foreach ($_chain as $_cr) {
+                if ((int)$_cr['isApproved'] === 0) { $_next = $_cr; break; }
+            }
+
+            if ($_next) {
+                $_name  = trim($_next['employee_name']  ?? '');
+                $_title = trim($_next['job_title_name'] ?? '');
+                $_ser   = (int)($_next['serial'] ?? 0);
+                $_isSup = ((int)$_next['isSupervisor']  === 1);
+                $_fwded = ((int)$_next['isSentbyAdmin'] === 1);
+                $_line  = 'font-size:0.74rem;line-height:1.35;color:#5d3f1c;';
+                $_prog  = ($_ser > 0 && $_total > 0)
+                    ? ' <span style="background:#6c5ce7;color:#fff;padding:1px 6px;border-radius:0.3rem;font-size:0.65rem;margin-left:4px;">' . banglaNumber($_ser) . '/' . banglaNumber($_total) . '</span>'
+                    : '';
+
+                $_who = function ($name, $title) {
+                    return '<strong>' . htmlspecialchars($name) . '</strong>'
+                         . ($title !== '' ? ' <span style="color:#8a90a6;">— ' . htmlspecialchars($title) . '</span>' : '');
+                };
+
+                if ($_isSup || $_fwded) {
+                    if ($_name !== '') {
+                        $status .= '<div class="mt-1 small" style="' . $_line . '">'
+                                .  '<i class="ti tabler-user-check me-1" style="color:#b8651a;"></i>'
+                                .  $_who($_name, $_title)
+                                .  ' <span class="text-muted">(' . ($_isSup ? 'সুপারিশের' : 'অনুমোদনের') . ' অপেক্ষায়)</span>'
+                                .  $_prog
+                                .  '</div>';
+                    }
+                } else {
+                    // Recommended, but the centre admin hasn't forwarded it yet.
+                    $status .= '<div class="mt-1 small" style="' . $_line . '">'
+                            .  '<i class="ti tabler-building-bank me-1" style="color:#b8651a;"></i>'
+                            .  '<strong>কেন্দ্র প্রশাসন</strong> <span class="text-muted">(প্রেরণের অপেক্ষায়)</span>'
                             .  '</div>';
+                    if ($_name !== '') {
+                        $status .= '<div class="small" style="' . $_line . 'color:#8a90a6;">'
+                                .  '<i class="ti tabler-arrow-narrow-right me-1"></i>পরবর্তী: ' . $_who($_name, $_title)
+                                .  $_prog
+                                .  '</div>';
+                    }
                 }
             }
         }
