@@ -1,6 +1,7 @@
 <?php
 require_once(__DIR__ . '/../../includes/header_vuexy.php');
 require_once(LIBRARY_PATH . '/number_converter.php');
+require_once(__DIR__ . '/../../includes/joining-effective-leave.php');
 
 // Re-query full user
 $_stmt = mysqli_prepare($con,
@@ -232,9 +233,17 @@ function render_joining_row($r, $sl, $con, $joiningTypeMap, $jtClassMap, $jtIcon
     $action = '<div class="action-group">'
             . '<a class="action-icon icon-view" href="../../views/leave/approve-joining-application.php?menuslug=leave-joining-approval&joiningID=' . $joiningID . '" data-bs-toggle="tooltip" title="বিস্তারিত ও সিদ্ধান্ত"><i class="ti tabler-eye"></i></a>'
             . '<a class="action-icon icon-attach" target="_blank" href="../../views/leave/application-details.php?menuslug=leave-joining-approval&leaveApplicationID=' . $appID . '" data-bs-toggle="tooltip" title="মূল ছুটির আবেদন"><i class="ti tabler-file-text"></i></a>'
+            . '<a class="action-icon icon-doc" target="_blank" href="../../views/leave/documents/' . joining_letter_file($joiningType) . '?menuslug=leave-joining-approval&leaveApplicationID=' . $appID . '" data-bs-toggle="tooltip" title="যোগদান পত্র"><i class="ti tabler-file-check"></i></a>'
             . '</div>';
 
-    $submitWhen = trim(($r['submitDate'] ?? '') . ' ' . ($r['submitTime'] ?? ''));
+    // submitTime is a full DATETIME while submitDate holds only the date, so
+    // concatenating the two printed the day twice.
+    $submitRaw  = trim($r['submitTime'] ?? '') ?: trim($r['submitDate'] ?? '');
+    $submitTs   = $submitRaw ? strtotime($submitRaw) : false;
+    $hasClock   = (bool)preg_match('/\d{1,2}:\d{2}/', $submitRaw);
+    $submitWhen = $submitTs
+        ? banglaNumber(date('d/m/Y', $submitTs)) . ($hasClock ? ' — ' . banglaNumber(date('H:i', $submitTs)) : '')
+        : '';
 
     return [
         'serial'         => '<span class="serial-num">' . $sl . '</span>',

@@ -94,6 +94,18 @@ function joining_effective_segments(array $segs, $joiningType, $joinIso, array $
 }
 
 /**
+ * Filename under views/leave/documents/ for a joining type's letter.
+ */
+function joining_letter_file($joiningType)
+{
+    switch ((int)$joiningType) {
+        case 2:  return 'joining-details-typetwo.php';
+        case 3:  return 'joining-details-typethree.php';
+        default: return 'joining-details.php';
+    }
+}
+
+/**
  * leaveID => leaveTitle, read once per request.
  */
 function joining_leave_titles($con)

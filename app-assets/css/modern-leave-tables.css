@@ -753,6 +753,7 @@
 .action-icon.icon-attach   { background: #fff3e1; color: #b8651a; }
 .action-icon.icon-approve  { background: #e6f7ee; color: #1a7e44; }
 .action-icon.icon-reject   { background: #fbeaea; color: #b13c3c; }
+.action-icon.icon-doc      { background: #eef0ff; color: #4c46b8; }
 .action-icon:hover {
     transform: translateY(-1px);
     filter: brightness(0.95);
