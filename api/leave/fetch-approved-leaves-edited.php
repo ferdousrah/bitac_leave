@@ -257,9 +257,14 @@ while ($empRow = mysqli_fetch_array($dataResult)) {
         $primaryHtml = '<div class="date-range"><i class="ti tabler-calendar-check"></i><span>' . banglaNumber(date_format($adateF, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($adateT, "d/m/Y")) . '</span></div>';
         if (count($__segs) > 1) {
             $__segTotal = array_sum(array_column($__segs, 'days'));
+            // Date-stamp the chips when the segments have gaps between them —
+            // otherwise the range above reads as far more days than the total.
+            $__segGapped = !joining_segments_contiguous($__segs);
             $__segParts = [];
             foreach ($__segs as $__sg) {
-                $__segParts[] = '<span class="seg-pill">' . banglaNumber((int)$__sg['days']) . ' দিন '
+                $__segParts[] = '<span class="seg-pill">'
+                              . ($__segGapped ? joining_segment_dates($__sg) . ' · ' : '')
+                              . banglaNumber((int)$__sg['days']) . ' দিন '
                               . htmlspecialchars($__sg['leaveTitle'] ?? 'অজানা') . '</span>';
             }
             $primaryHtml .= '<div class="leave-meta"><span class="days-pill days-pill-success">মোট ' . banglaNumber($__segTotal) . ' দিন</span></div>'
@@ -277,9 +282,12 @@ while ($empRow = mysqli_fetch_array($dataResult)) {
                    . (count($__spentSegs) > 1 || !$leaveTypeText ? '' : ' <span class="leave-type-chip">' . htmlspecialchars($leaveTypeText) . '</span>')
                    . '</div>';
         if (count($__spentSegs) > 1) {
+            $__spentGapped = !joining_segments_contiguous($__spentSegs);
             $__spentParts = [];
             foreach ($__spentSegs as $__sg) {
-                $__spentParts[] = '<span class="seg-pill">' . banglaNumber((int)$__sg['days']) . ' দিন '
+                $__spentParts[] = '<span class="seg-pill">'
+                                . ($__spentGapped ? joining_segment_dates($__sg) . ' · ' : '')
+                                . banglaNumber((int)$__sg['days']) . ' দিন '
                                 . htmlspecialchars($__sg['leaveTitle'] ?? 'অজানা') . '</span>';
             }
             $spentHtml .= '<div class="seg-list">' . implode(' ', $__spentParts) . '</div>';

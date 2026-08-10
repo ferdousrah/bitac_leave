@@ -89,6 +89,37 @@ function joining_effective_segments(array $segs, $joiningType, $joinIso, array $
 }
 
 /**
+ * True when the segments run back to back, so the first→last date range
+ * describes them honestly. Multi-segment leave often has gaps, and a bare
+ * range then reads as far more days than the total beside it.
+ */
+function joining_segments_contiguous(array $segs)
+{
+    if (count($segs) < 2) return true;
+    $sorted = $segs;
+    usort($sorted, function ($a, $b) { return strcmp((string)$a['dateFrom'], (string)$b['dateFrom']); });
+    for ($i = 1, $n = count($sorted); $i < $n; $i++) {
+        $expected = date('Y-m-d', strtotime($sorted[$i - 1]['dateTo'] . ' +1 day'));
+        if ((string)$sorted[$i]['dateFrom'] !== $expected) return false;
+    }
+    return true;
+}
+
+/**
+ * "০৮/০৮" for a single day, "০৮/০৮–১১/০৮" for a span. Year is dropped — the
+ * chip sits directly under a full date range that already carries it.
+ */
+function joining_segment_dates($sg)
+{
+    $from = (string)$sg['dateFrom'];
+    $to   = (string)$sg['dateTo'];
+    if ($from === '') return '';
+    $f = banglaNumber(date('d/m', strtotime($from)));
+    if ($to === '' || $to === $from) return $f;
+    return $f . '–' . banglaNumber(date('d/m', strtotime($to)));
+}
+
+/**
  * Total days, first date and last date across a segment list.
  *
  * @return array{days:int, from:?string, to:?string}
