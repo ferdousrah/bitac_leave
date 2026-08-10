@@ -73,19 +73,37 @@ function joining_effective_segments(array $segs, $joiningType, $joinIso, array $
         }
     }
 
+    // extensionSegmentsJson stores leaveType ids only, so a caller that wants
+    // readable chips has to hand over the id → title map (joining_leave_titles).
+    $titles = is_array($opts['leaveTitles'] ?? null) ? $opts['leaveTitles'] : [];
+
     $out = $segs;
     foreach ($ext as $es) {
         $days = (int)($es['days'] ?? 0);
         if ($days <= 0) continue;
+        $lt = (int)($es['leaveType'] ?? 0);
         $out[] = [
-            'leaveType'  => (int)($es['leaveType'] ?? 0),
-            'leaveTitle' => $es['leaveTitle'] ?? null,
+            'leaveType'  => $lt,
+            'leaveTitle' => $es['leaveTitle'] ?? ($titles[$lt] ?? null),
             'dateFrom'   => (string)($es['dateFrom'] ?? ''),
             'dateTo'     => (string)($es['dateTo'] ?? ''),
             'days'       => $days,
         ];
     }
     return $out;
+}
+
+/**
+ * leaveID => leaveTitle, read once per request.
+ */
+function joining_leave_titles($con)
+{
+    static $map = null;
+    if ($map !== null) return $map;
+    $map = [];
+    $q = mysqli_query($con, "SELECT leaveID, leaveTitle FROM leave_types");
+    if ($q) while ($r = mysqli_fetch_assoc($q)) $map[(int)$r['leaveID']] = $r['leaveTitle'];
+    return $map;
 }
 
 /**

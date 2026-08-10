@@ -166,6 +166,7 @@ function generatePDFData($leaveApplicationID) {
             'extensionSegmentsJson' => $joiningData['extensionSegmentsJson'] ?? null,
             'approvedDateTo'        => $leaveData['approvedDateTo'] ?? '',
             'extLeaveType'          => $joiningData['approvedLeaveType'] ?? 0,
+            'leaveTitles'           => joining_leave_titles($con),
         ]);
         $totalSpan = joining_segments_span($totalSegs);
         if ($totalSpan['days'] > 0) {

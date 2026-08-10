@@ -305,6 +305,7 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
             'extensionSegmentsJson' => $row['lja_extensionSegmentsJson'] ?? null,
             'approvedDateTo'        => $row['approvedDateTo'] ?? '',
             'extLeaveType'          => $row['lja_approvedLeaveType'] ?? 0,
+            'leaveTitles'           => joining_leave_titles($con),
         ]);
         $_spentSpan = joining_segments_span($_spentSegs);
         if ($_spentSpan['days'] > 0) {

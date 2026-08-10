@@ -105,6 +105,7 @@ while ($empRow = mysqli_fetch_array($dataResult)) {
             'extensionSegmentsJson' => $empRow['extensionSegmentsJson'] ?? null,
             'approvedDateTo'        => $empRow['approvedDateTo'] ?? '',
             'extLeaveType'          => $empRow['joining_ext_leave_type'] ?? 0,
+            'leaveTitles'           => joining_leave_titles($con),
         ]);
         $__spentSpan = joining_segments_span($__spentSegs);
 
