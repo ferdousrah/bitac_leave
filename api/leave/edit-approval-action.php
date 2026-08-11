@@ -63,6 +63,13 @@ if ((int)$led['status'] !== 0) out(0, 'এই প্রস্তাব ইতি
 
 $leaveAppID = (int)$led['leaveApplicationID'];
 
+// Nobody decides their own application, whatever the stored chain says.
+// Chains written before self-exclusion existed can still name the applicant,
+// and this also stops an applicant who named themselves supervisor.
+if ($actorEmpId > 0 && $actorEmpId === (int)$led['applicantID']) {
+    out(0, 'নিজের ছুটির সংশোধনে সিদ্ধান্ত দেওয়া যাবে না — অ্যাডমিনকে জানান');
+}
+
 // ── Load actor's chain row + verify it's their turn ──
 $rowStmt = mysqli_prepare($con,
     "SELECT * FROM leave_edit_data_for_approval

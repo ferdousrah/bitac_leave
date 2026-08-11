@@ -149,6 +149,7 @@ mysqli_stmt_execute($supChkStmt);
 $supChk = mysqli_fetch_assoc(mysqli_stmt_get_result($supChkStmt));
 mysqli_stmt_close($supChkStmt);
 if (!$supChk) out(0, 'সুপারভাইজার এই কেন্দ্রের কর্মী নন');
+if ($supervisorID === $applicantID) out(0, 'নিজের যোগদান পত্রে নিজেকে সুপারভাইজার নির্বাচন করা যাবে না');
 
 // Build signatory chain (use the leave's original leaveType)
 $chainLeaveType = (int)$leaveApp['leaveType'];
@@ -254,7 +255,9 @@ try {
     $serial = 2;
     foreach ($chain as $entry) {
         $sigEmpID = (int)$entry['employeeID'];
-        if ($sigEmpID <= 0) { $serial++; continue; }
+        // No serial bump on skip: the queues gate on `prev.serial = serial - 1`,
+        // so a hole would stall the letter permanently.
+        if ($sigEmpID <= 0) { continue; }
         // The supervisor deliberately keeps their signatory seat as well — the
         // সুপারিশ and the approval are two separate acts by the same person, and
         // insert-application.php builds the leave chain the same way. Skipping

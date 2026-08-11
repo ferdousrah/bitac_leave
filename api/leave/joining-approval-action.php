@@ -59,6 +59,13 @@ $leaveAppID  = (int)$lja['leaveApplicationID'];
 $joiningType = (int)$lja['joiningType'];
 $appOrgID    = (int)$lja['organization_id'];
 
+// Nobody decides their own application, whatever the stored chain says.
+// Chains written before self-exclusion existed can still name the applicant,
+// and this also stops an applicant who named themselves supervisor.
+if ($actorEmpId > 0 && $actorEmpId === (int)$lja['applicantID']) {
+    out(0, 'নিজের যোগদান পত্রে সিদ্ধান্ত দেওয়া যাবে না — অ্যাডমিনকে জানান');
+}
+
 // Verify actor's chain row + turn
 $rowStmt = mysqli_prepare($con,
     "SELECT * FROM leave_joining_data_for_approval

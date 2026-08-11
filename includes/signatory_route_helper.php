@@ -176,5 +176,19 @@ function buildSignatoryChain($con, $applicantId, $leaveTypeId) {
         }
     }
 
+    // Nobody approves their own application. A signatory who applies would
+    // otherwise land in their own chain, since the configured list says nothing
+    // about who is applying. Filtering here covers every flow at once — leave,
+    // joining, edit-approval and optional pre-approval all call this with the
+    // applicant id. Note the test is against the *applicant*, never the
+    // supervisor: one person legitimately holds both the supervisor seat and a
+    // chain seat, and that is exactly the intended route for a signatory's own
+    // leave (কেন্দ্র প্রধান recommends, then approves as first signatory).
+    if ($applicantId > 0) {
+        $chain = array_values(array_filter($chain, function ($entry) use ($applicantId) {
+            return (int)$entry['employeeID'] !== (int)$applicantId;
+        }));
+    }
+
     return $chain;
 }

@@ -51,6 +51,19 @@ if (!$approvalRow) {
     exit;
 }
 
+// Nobody decides their own application, whatever the stored chain says.
+// Chains written before self-exclusion existed can still name the applicant,
+// and this also stops an applicant who named themselves supervisor.
+$applicantStmt = mysqli_prepare($con, "SELECT applicantID FROM leave_applications WHERE dataID = ? LIMIT 1");
+mysqli_stmt_bind_param($applicantStmt, 'i', $leaveApplicationID);
+mysqli_stmt_execute($applicantStmt);
+$applicantRow = mysqli_fetch_assoc(mysqli_stmt_get_result($applicantStmt));
+mysqli_stmt_close($applicantStmt);
+if ($applicantRow && (int)$applicantRow['applicantID'] === $currentEmployeeID) {
+    echo json_encode(['status' => 0, 'message' => 'নিজের ছুটির আবেদনে সিদ্ধান্ত দেওয়া যাবে না — অ্যাডমিনকে জানান।']);
+    exit;
+}
+
 // ── DECLINE ─────────────────────────────────────────────────────────────────
 if ($action === 'decline') {
     $decStmt = mysqli_prepare($con,

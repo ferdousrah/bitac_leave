@@ -637,18 +637,31 @@ if(in_array($file_ext,$extensions)== false){
 		
 		}
 
-		// Build signatory chain using routing rules (grade + leave type based)
-		// buildSignatoryChain() uses employeeID directly from leave_approval_signatory
+		// The applicant can't be their own supervisor either. Checked here rather
+		// than by trimming the dropdown, because on পক্ষে submissions the submitter
+		// and the applicant differ and the submitter may legitimately supervise.
+		if ((int)$supervisorID === (int)$employeeID) {
+			throw new Exception('নিজের আবেদনে নিজেকে সুপারভাইজার নির্বাচন করা যাবে না।');
+		}
+
+		// Build signatory chain using routing rules (grade + leave type based).
+		// buildSignatoryChain() resolves employeeIDs from leave_approval_signatory
+		// and drops the applicant, so nobody ends up approving their own leave.
 		$chain = buildSignatoryChain($con, (int)$employeeID, (int)$leaveType);
+
+		// Serials must stay contiguous from 2. Several queues decide whose turn it
+		// is with `prev.serial = serial - 1`, so a hole stalls the application for
+		// good and hides it from both the approval list and the sidebar badge.
+		$serialNum         = 2;
+		$chainRowsInserted = 0;
 
 		if (!empty($chain)) {
 			// Route-based chain: each entry has employeeID already resolved
-			$serialNum = 2;
 			foreach ($chain as $sigEntry) {
 				$sigEmpId = (int)$sigEntry['employeeID'];
-				if (!$sigEmpId) { $serialNum++; continue; }
+				if (!$sigEmpId) { continue; }
 				// Fetch this signatory's org snapshot
-					$_sigQ    = mysqli_query($con, "SELECT organization_id, department_id, section_id, designation, pay_scale FROM employee_list WHERE id='$sigEmpId' LIMIT 1");
+				$_sigQ    = mysqli_query($con, "SELECT organization_id, department_id, section_id, designation, pay_scale FROM employee_list WHERE id='$sigEmpId' LIMIT 1");
 				$_sigSnap = $_sigQ ? mysqli_fetch_assoc($_sigQ) : [];
 				$_sig_org   = (int)($_sigSnap['organization_id'] ?? 0);
 				$_sig_dept  = (int)($_sigSnap['department_id'] ?? 0);
@@ -660,38 +673,52 @@ if(in_array($file_ext,$extensions)== false){
 					VALUES('$leaveApplicationID', '$sigEmpId', '$prevSignatory', '0', '$serialNum', '$_sig_org', '$_sig_dept', '$_sig_sec', '$_sig_desig', '$_sig_pay')");
 				$prevSignatory = $sigEmpId;
 				$serialNum++;
+				$chainRowsInserted++;
 			}
 		} else {
-			// Fallback: no routing rules configured — use designation-based method
+			// Fallback: no routing rules configured — use designation-based method.
+			// Serial comes from the running counter rather than approvalSL, so a
+			// vacant seat or the applicant's own seat can be skipped without a hole.
 			$getSignatoryFallbackQ = mysqli_query($con, "SELECT * FROM `leave_approval_signatory` WHERE organization_id='$organization_id' AND isMandatory=1 ORDER BY approvalSL ASC");
 			while ($sigRow = mysqli_fetch_array($getSignatoryFallbackQ)) {
-				$designatedSigQ = mysqli_query($con, "SELECT * FROM employee_list WHERE organization_id = '$sigRow[organization_id]' AND designation = '$sigRow[designationID]' AND employment_status=1 AND pending_section_assignment=0");
+				$designatedSigQ   = mysqli_query($con, "SELECT * FROM employee_list WHERE organization_id = '$sigRow[organization_id]' AND designation = '$sigRow[designationID]' AND employment_status=1 AND pending_section_assignment=0 LIMIT 1");
 				$designatedSigQRW = mysqli_fetch_assoc($designatedSigQ);
+				$_fb_id = (int)($designatedSigQRW['id'] ?? 0);
+				if ($_fb_id <= 0 || $_fb_id === (int)$employeeID) { continue; }
 				$_fb_org   = (int)($designatedSigQRW['organization_id'] ?? 0);
-			$_fb_dept  = (int)($designatedSigQRW['department_id'] ?? 0);
-			$_fb_sec   = (int)($designatedSigQRW['section_id'] ?? 0);
-			$_fb_desig = (int)($designatedSigQRW['designation'] ?? 0);
-			$_fb_pay   = mysqli_real_escape_string($con, $designatedSigQRW['pay_scale'] ?? '');
-			mysqli_query($con, "INSERT INTO leave_data_for_approval(leaveApplicationID, signatory, prevSignatory, isApproved, serial, organization_id, department_id, section_id, designation_id, pay_scale) VALUES('$leaveApplicationID', '$designatedSigQRW[id]', '$prevSignatory', '0', '$sigRow[approvalSL]', '$_fb_org', '$_fb_dept', '$_fb_sec', '$_fb_desig', '$_fb_pay')");
-				$prevSignatory = $designatedSigQRW['id'];
+				$_fb_dept  = (int)($designatedSigQRW['department_id'] ?? 0);
+				$_fb_sec   = (int)($designatedSigQRW['section_id'] ?? 0);
+				$_fb_desig = (int)($designatedSigQRW['designation'] ?? 0);
+				$_fb_pay   = mysqli_real_escape_string($con, $designatedSigQRW['pay_scale'] ?? '');
+				mysqli_query($con, "INSERT INTO leave_data_for_approval(leaveApplicationID, signatory, prevSignatory, isApproved, serial, organization_id, department_id, section_id, designation_id, pay_scale) VALUES('$leaveApplicationID', '$_fb_id', '$prevSignatory', '0', '$serialNum', '$_fb_org', '$_fb_dept', '$_fb_sec', '$_fb_desig', '$_fb_pay')");
+				$prevSignatory = $_fb_id;
+				$serialNum++;
+				$chainRowsInserted++;
 			}
 
+			// বরাবর = মহাপরিচালক → the DG closes the chain
 			if ($applicationTo == 2) {
-				$getLastSignatoryQ = mysqli_query($con, "SELECT * FROM `leave_approval_signatory` WHERE organization_id='$organization_id' AND isMandatory=1 ORDER BY approvalSL DESC LIMIT 0,1");
-				$getLastSignatoryQRW = mysqli_fetch_assoc($getLastSignatoryQ);
-				$getLastSigQ = mysqli_query($con, "SELECT * FROM employee_list WHERE organization_id='$getLastSignatoryQRW[organization_id]' AND designation='$getLastSignatoryQRW[designationID]'");
-				$getLastSigQRW = mysqli_fetch_assoc($getLastSigQ);
-				$newsigsl = $getLastSignatoryQRW['approvalSL'] + 1;
-				$prevSignatorylast = $getLastSigQRW['id'];
-				$getDGQ = mysqli_query($con, "SELECT * FROM employee_list WHERE designation=111 AND employment_status=1 AND pending_section_assignment=0");
+				$getDGQ   = mysqli_query($con, "SELECT * FROM employee_list WHERE designation=111 AND employment_status=1 AND pending_section_assignment=0 LIMIT 1");
 				$getDGQRW = mysqli_fetch_assoc($getDGQ);
-				$_dg_org   = (int)($getDGQRW['organization_id'] ?? 0);
-				$_dg_dept  = (int)($getDGQRW['department_id'] ?? 0);
-				$_dg_sec   = (int)($getDGQRW['section_id'] ?? 0);
-				$_dg_desig = (int)($getDGQRW['designation'] ?? 0);
-				$_dg_pay   = mysqli_real_escape_string($con, $getDGQRW['pay_scale'] ?? '');
-				mysqli_query($con, "INSERT INTO leave_data_for_approval(leaveApplicationID, signatory, prevSignatory, isApproved, serial, isDG, organization_id, department_id, section_id, designation_id, pay_scale) VALUES('$leaveApplicationID', '$getDGQRW[id]', '$prevSignatorylast', '0', '$newsigsl', 1, '$_dg_org', '$_dg_dept', '$_dg_sec', '$_dg_desig', '$_dg_pay')");
+				$_dg_id = (int)($getDGQRW['id'] ?? 0);
+				if ($_dg_id > 0 && $_dg_id !== (int)$employeeID) {
+					$_dg_org   = (int)($getDGQRW['organization_id'] ?? 0);
+					$_dg_dept  = (int)($getDGQRW['department_id'] ?? 0);
+					$_dg_sec   = (int)($getDGQRW['section_id'] ?? 0);
+					$_dg_desig = (int)($getDGQRW['designation'] ?? 0);
+					$_dg_pay   = mysqli_real_escape_string($con, $getDGQRW['pay_scale'] ?? '');
+					mysqli_query($con, "INSERT INTO leave_data_for_approval(leaveApplicationID, signatory, prevSignatory, isApproved, serial, isDG, organization_id, department_id, section_id, designation_id, pay_scale) VALUES('$leaveApplicationID', '$_dg_id', '$prevSignatory', '0', '$serialNum', 1, '$_dg_org', '$_dg_dept', '$_dg_sec', '$_dg_desig', '$_dg_pay')");
+					$prevSignatory = $_dg_id;
+					$serialNum++;
+					$chainRowsInserted++;
+				}
 			}
+		}
+
+		// An application nobody can approve would sit forever without ever
+		// surfacing anywhere, so refuse it here instead of storing it.
+		if ($chainRowsInserted === 0) {
+			throw new Exception('অনুমোদনের জন্য কোনো স্বাক্ষরকারী পাওয়া যায়নি। আপনি নিজেই এই কেন্দ্রের একমাত্র স্বাক্ষরকারী হলে অ্যাডমিনকে জানান।');
 		}
 
 		echo "<div class='alert alert-success'><strong>Success!</strong> আপনার ছুটির আবেদনটি অনুমোদনের জন্য যথাযথ কর্তৃপক্ষের কাছে প্রেরণ করা হয়েছে ।</div>";
