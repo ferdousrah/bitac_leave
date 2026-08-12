@@ -644,6 +644,18 @@ if(in_array($file_ext,$extensions)== false){
 			throw new Exception('নিজের আবেদনে নিজেকে সুপারভাইজার নির্বাচন করা যাবে না।');
 		}
 
+		// A signatory's own application must be recommended from above — never by a
+		// subordinate. Enforced here rather than in the dropdown because on পক্ষে
+		// submissions the applicant isn't the person the form was rendered for.
+		$requiredSupervisor = supervisorRestrictionFor($con, (int)$employeeID);
+		if ($requiredSupervisor > 0 && (int)$supervisorID !== $requiredSupervisor) {
+			$_rsQ = mysqli_query($con, "SELECT el.employee_name, jt.job_title_name FROM employee_list el LEFT JOIN job_title jt ON jt.id = el.designation WHERE el.id = " . (int)$requiredSupervisor . " LIMIT 1");
+			$_rs  = $_rsQ ? mysqli_fetch_assoc($_rsQ) : null;
+			$_rsName = trim(($_rs['employee_name'] ?? '') . ($_rs['job_title_name'] ? ', ' . $_rs['job_title_name'] : ''));
+			throw new Exception('আপনি অনুমোদন চেইনের একজন স্বাক্ষরকারী, তাই আপনার আবেদনের সুপারিশ করবেন ঊর্ধ্বতন কর্তৃপক্ষ'
+				. ($_rsName !== '' ? ' — ' . $_rsName : '') . '। সুপারভাইজার হিসেবে তাঁকেই নির্বাচন করুন।');
+		}
+
 		// Build signatory chain using routing rules (grade + leave type based).
 		// buildSignatoryChain() resolves employeeIDs from leave_approval_signatory
 		// and drops the applicant, so nobody ends up approving their own leave.

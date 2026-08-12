@@ -153,10 +153,23 @@ function buildSignatoryChain($con, $applicantId, $leaveTypeId) {
         }
     }
 
+    // A signatory applying thins the centre's own bench — their seat comes out of
+    // the chain — so their application always climbs to HQ regardless of the
+    // centre's skip-HQ setting. For a কেন্দ্র প্রধান this is what leaves the DG as
+    // the only approver, which is the agreed outcome.
+    $applicantIsSignatory = false;
+    if ($applicantId > 0) {
+        $sigChk = mysqli_query($con,
+            "SELECT 1 FROM leave_approval_signatory WHERE employeeID = " . (int)$applicantId . " LIMIT 1");
+        $applicantIsSignatory = ($sigChk && mysqli_num_rows($sigChk) > 0);
+    }
+
     // Fetch HQ signatories (organization_id = 4 = HQ)
     // For center_then_hq: only include HQ if hq_approval_required = 1
     // For hq_only: always include HQ regardless
-    $includeHQ = ($route === 'hq_only') || ($route === 'center_then_hq' && $hqRequired === 1);
+    $includeHQ = ($route === 'hq_only')
+              || ($route === 'center_then_hq' && $hqRequired === 1)
+              || $applicantIsSignatory;
     if ($includeHQ) {
         $hqStmt = mysqli_prepare($con,
             "SELECT las.employeeID, las.isMandatory
@@ -175,6 +188,38 @@ function buildSignatoryChain($con, $applicantId, $leaveTypeId) {
             ];
         }
     }
+
+    // "Always up to the DG" for a signatory's own application. The HQ signatory
+    // list currently ends at পরিচালক (প্রশাসন ও অর্থ), so relying on it alone would
+    // stop short of মহাপরিচালক. Appending by designation mirrors what the legacy
+    // বরাবর = মহাপরিচালক path already does.
+    if ($applicantIsSignatory) {
+        $dgQ = mysqli_query($con,
+            "SELECT id FROM employee_list
+             WHERE designation = 111
+               AND employment_status = 1
+               AND pending_section_assignment = 0
+             ORDER BY display_order ASC LIMIT 1");
+        if ($dgQ && $dgRow = mysqli_fetch_assoc($dgQ)) {
+            $chain[] = [
+                'employeeID'  => (int)$dgRow['id'],
+                'isMandatory' => 1,
+                'scope'       => 'hq',
+            ];
+        }
+    }
+
+    // One desk, one step. A person configured both in a centre's list and in the
+    // HQ list would otherwise be asked to approve twice in a row. (The supervisor
+    // seat is separate and legitimately held by a chain member — that row lives
+    // outside this list.)
+    $seenIds = [];
+    $chain = array_values(array_filter($chain, function ($entry) use (&$seenIds) {
+        $id = (int)$entry['employeeID'];
+        if ($id <= 0 || isset($seenIds[$id])) return false;
+        $seenIds[$id] = true;
+        return true;
+    }));
 
     // Nobody approves their own application. A signatory who applies would
     // otherwise land in their own chain, since the configured list says nothing
@@ -284,4 +329,96 @@ function buildJoiningChainFromLeave($con, $leaveApplicationID, $applicantId)
     }
 
     return ['chain' => $chain, 'unresolved' => $unresolved];
+}
+
+/**
+ * The one desk allowed to recommend a signatory's own application: the highest
+ * ranked signatory of their centre above them, and failing that the top of the
+ * HQ list. Picking a subordinate as supervisor is the hole this closes.
+ *
+ * @return int employee_list.id, or 0 when the applicant isn't a signatory (no
+ *             restriction applies) — callers treat 0 as "show everyone".
+ */
+function supervisorRestrictionFor($con, $applicantId)
+{
+    $applicantId = (int)$applicantId;
+    if ($applicantId <= 0) return 0;
+
+    $emp = mysqli_fetch_assoc(mysqli_query($con,
+        "SELECT organization_id FROM employee_list WHERE id = $applicantId LIMIT 1"));
+    $orgId = (int)($emp['organization_id'] ?? 0);
+    if ($orgId <= 0) return 0;
+
+    $mine = mysqli_fetch_assoc(mysqli_query($con,
+        "SELECT MIN(approvalSL) AS sl FROM leave_approval_signatory
+         WHERE employeeID = $applicantId AND organization_id = $orgId"));
+    if ($mine === null || $mine['sl'] === null) return 0;   // not a signatory here
+    $mySL = (int)$mine['sl'];
+
+    // Highest-ranked signatory of this centre sitting above the applicant.
+    $above = mysqli_fetch_assoc(mysqli_query($con,
+        "SELECT las.employeeID
+         FROM leave_approval_signatory las
+         INNER JOIN employee_list el ON el.id = las.employeeID
+         WHERE las.organization_id = $orgId
+           AND las.approvalSL > $mySL
+           AND las.employeeID <> $applicantId
+           AND el.employment_status = 1
+           AND el.pending_section_assignment = 0
+         ORDER BY las.approvalSL DESC LIMIT 1"));
+    if ($above) return (int)$above['employeeID'];
+
+    // Nobody above in the centre — that's the কেন্দ্র প্রধান applying, so it goes to HQ.
+    $hq = mysqli_fetch_assoc(mysqli_query($con,
+        "SELECT las.employeeID
+         FROM leave_approval_signatory las
+         INNER JOIN employee_list el ON el.id = las.employeeID
+         WHERE las.organization_id = 4
+           AND las.employeeID <> $applicantId
+           AND el.employment_status = 1
+           AND el.pending_section_assignment = 0
+         ORDER BY las.approvalSL DESC LIMIT 1"));
+    return $hq ? (int)$hq['employeeID'] : 0;
+}
+
+/**
+ * The supervisor a joining letter should default to: whoever recommended the
+ * leave, re-resolved to the seat's current holder just like the chain is.
+ *
+ * @return int employee_list.id, or 0 if it can't be resolved.
+ */
+function joiningSupervisorDefault($con, $leaveApplicationID, $applicantId)
+{
+    $leaveApplicationID = (int)$leaveApplicationID;
+    $applicantId        = (int)$applicantId;
+
+    $row = mysqli_fetch_assoc(mysqli_query($con,
+        "SELECT signatory, organization_id, designation_id
+         FROM leave_data_for_approval
+         WHERE leaveApplicationID = $leaveApplicationID AND isSupervisor = 1
+         ORDER BY serial ASC LIMIT 1"));
+    if (!$row) return 0;
+
+    $storedId  = (int)$row['signatory'];
+    $seatOrg   = (int)$row['organization_id'];
+    $seatDesig = (int)$row['designation_id'];
+
+    if ($storedId > 0 && $storedId !== $applicantId) {
+        $chk = mysqli_query($con,
+            "SELECT id FROM employee_list
+             WHERE id = $storedId AND employment_status = 1 AND pending_section_assignment = 0"
+            . ($seatOrg > 0 ? " AND organization_id = $seatOrg" : '') . " LIMIT 1");
+        if ($chk && mysqli_num_rows($chk) > 0) return $storedId;
+    }
+
+    if ($seatOrg > 0 && $seatDesig > 0) {
+        $sub = mysqli_fetch_assoc(mysqli_query($con,
+            "SELECT id FROM employee_list
+             WHERE organization_id = $seatOrg AND designation = $seatDesig
+               AND employment_status = 1 AND pending_section_assignment = 0
+               AND id <> $applicantId
+             ORDER BY display_order ASC LIMIT 1"));
+        if ($sub) return (int)$sub['id'];
+    }
+    return 0;
 }

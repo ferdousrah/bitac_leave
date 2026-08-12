@@ -1,5 +1,6 @@
 <?php
 require_once(__DIR__ . '/../../includes/header_vuexy.php');
+require_once(__DIR__ . '/../../includes/signatory_route_helper.php');
 
 $leaveApplicationID = (int)($_GET['leaveApplicationID'] ?? 0);
 $joiningType        = (int)($_GET['type'] ?? 1);
@@ -92,14 +93,10 @@ if ($approvedDays === 0 && $approvedDateFrom && $approvedDateTo) {
     $approvedDays = (int)((strtotime($approvedDateTo) - strtotime($approvedDateFrom)) / 86400) + 1;
 }
 
-// Pre-fill supervisor from the leave's chain
-$supervisorID = 0;
-$supStmt = mysqli_prepare($con, "SELECT signatory FROM leave_data_for_approval WHERE leaveApplicationID = ? AND isSupervisor = 1 LIMIT 1");
-mysqli_stmt_bind_param($supStmt, 'i', $leaveApplicationID);
-mysqli_stmt_execute($supStmt);
-$supRow = mysqli_fetch_assoc(mysqli_stmt_get_result($supStmt));
-mysqli_stmt_close($supStmt);
-$supervisorID = (int)($supRow['signatory'] ?? 0);
+// Pre-fill supervisor from the leave's chain, re-resolved to whoever holds that
+// seat now — reading the stored id alone would offer someone who has since moved
+// on and can no longer act.
+$supervisorID = joiningSupervisorDefault($con, $leaveApplicationID, $applicantID);
 
 // Employees for supervisor dropdown — same center
 $empListQ = mysqli_prepare($con,
