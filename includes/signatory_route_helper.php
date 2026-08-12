@@ -192,3 +192,96 @@ function buildSignatoryChain($con, $applicantId, $leaveTypeId) {
 
     return $chain;
 }
+
+/**
+ * Builds a joining letter's chain from the chain the leave actually used.
+ *
+ * Rebuilding from today's config would throw away every decision taken for
+ * that specific application — a DG escalation, a desk the admin added, the
+ * applicant's own seat being dropped — so the joining could travel a different
+ * route than the leave did. Copying alone has the opposite problem: months can
+ * pass between taking leave and joining, and by then the কেন্দ্র প্রধান may be
+ * someone else entirely.
+ *
+ * So: copy the shape, refresh the people. leave_data_for_approval snapshots the
+ * seat (organization_id, designation_id) next to the person, which is what makes
+ * "same post, current holder" resolvable.
+ *
+ * @return array{chain: array, unresolved: array} chain entries carry
+ *         `substituted` (person changed) and `seatDesignation` for reporting.
+ */
+function buildJoiningChainFromLeave($con, $leaveApplicationID, $applicantId)
+{
+    $leaveApplicationID = (int)$leaveApplicationID;
+    $applicantId        = (int)$applicantId;
+
+    $rows = [];
+    $q = mysqli_query($con,
+        "SELECT signatory, serial, organization_id, designation_id
+         FROM leave_data_for_approval
+         WHERE leaveApplicationID = $leaveApplicationID
+           AND isSupervisor = 0
+         ORDER BY serial ASC, dataID ASC");
+    if ($q) while ($r = mysqli_fetch_assoc($q)) $rows[] = $r;
+
+    $chain      = [];
+    $unresolved = [];
+    $seen       = [];
+
+    foreach ($rows as $r) {
+        $storedId  = (int)$r['signatory'];
+        $seatOrg   = (int)$r['organization_id'];
+        $seatDesig = (int)$r['designation_id'];
+
+        $useId       = 0;
+        $substituted = false;
+
+        // Is the person who approved the leave still able to act here?
+        if ($storedId > 0) {
+            $chk = mysqli_query($con,
+                "SELECT id FROM employee_list
+                 WHERE id = $storedId
+                   AND employment_status = 1
+                   AND pending_section_assignment = 0"
+                . ($seatOrg > 0 ? " AND organization_id = $seatOrg" : '')
+                . " LIMIT 1");
+            if ($chk && mysqli_num_rows($chk) > 0) $useId = $storedId;
+        }
+
+        // Gone or moved — hand the seat to whoever holds that post now.
+        if ($useId === 0 && $seatOrg > 0 && $seatDesig > 0) {
+            $sub = mysqli_query($con,
+                "SELECT id FROM employee_list
+                 WHERE organization_id = $seatOrg
+                   AND designation     = $seatDesig
+                   AND employment_status = 1
+                   AND pending_section_assignment = 0
+                 ORDER BY display_order ASC
+                 LIMIT 1");
+            if ($sub && $subRow = mysqli_fetch_assoc($sub)) {
+                $useId       = (int)$subRow['id'];
+                $substituted = true;
+            }
+        }
+
+        if ($useId === 0) {
+            $unresolved[] = ['seatOrg' => $seatOrg, 'seatDesignation' => $seatDesig];
+            continue;
+        }
+        // Belt and braces — the leave chain already excluded the applicant, but a
+        // substitution could land on them if they now hold the post.
+        if ($useId === $applicantId) continue;
+        if (isset($seen[$useId])) continue;   // substitution collapsed onto an existing step
+        $seen[$useId] = true;
+
+        $chain[] = [
+            'employeeID'      => $useId,
+            'isMandatory'     => 0,
+            'scope'           => 'inherited',
+            'substituted'     => $substituted,
+            'seatDesignation' => $seatDesig,
+        ];
+    }
+
+    return ['chain' => $chain, 'unresolved' => $unresolved];
+}

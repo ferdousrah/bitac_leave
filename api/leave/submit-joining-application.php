@@ -6,6 +6,7 @@ ob_start();
 require_once(__DIR__ . '/../../connection.php');
 require_once(__DIR__ . '/../../bddate.php');
 require_once(__DIR__ . '/../../includes/signatory_route_helper.php');
+require_once(__DIR__ . '/../../library/number_converter.php');
 ob_end_clean();
 
 function out($status, $message, $extra = []) {
@@ -151,11 +152,38 @@ mysqli_stmt_close($supChkStmt);
 if (!$supChk) out(0, 'সুপারভাইজার এই কেন্দ্রের কর্মী নন');
 if ($supervisorID === $applicantID) out(0, 'নিজের যোগদান পত্রে নিজেকে সুপারভাইজার নির্বাচন করা যাবে না');
 
-// Build signatory chain (use the leave's original leaveType)
-$chainLeaveType = (int)$leaveApp['leaveType'];
-$chain = buildSignatoryChain($con, $applicantID, $chainLeaveType);
+// The joining letter follows the chain the leave actually travelled, with each
+// seat re-resolved to whoever holds it now — months can pass between taking
+// leave and joining, and the কেন্দ্র প্রধান may have changed in between.
+$inherited  = buildJoiningChainFromLeave($con, $leaveApplicationID, $applicantID);
+$chain      = $inherited['chain'];
+$unresolved = $inherited['unresolved'];
+
+if (empty($chain) && empty($unresolved)) {
+    // Legacy leave with no stored chain rows — fall back to building one.
+    $chainLeaveType = (int)$leaveApp['leaveType'];
+    $chain = buildSignatoryChain($con, $applicantID, $chainLeaveType);
+}
+
+if (!empty($unresolved)) {
+    // A post nobody currently holds. Type 1 auto-forwards straight into the
+    // chain with no admin review, so a silently shortened route there would
+    // never be seen — refuse instead. Type 2/3 stop at the admin, who can
+    // still act on it, so let those through with the seat dropped.
+    $seatNames = [];
+    foreach ($unresolved as $u) {
+        $d = (int)$u['seatDesignation'];
+        $nameQ = $d > 0 ? mysqli_query($con, "SELECT job_title_name FROM job_title WHERE id = $d LIMIT 1") : null;
+        $seatNames[] = ($nameQ && $nRow = mysqli_fetch_assoc($nameQ)) ? $nRow['job_title_name'] : 'অজানা পদ';
+    }
+    if ($joiningType === 1) {
+        out(0, 'অনুমোদন চেইনের এই পদে বর্তমানে কেউ নেই: ' . implode(', ', $seatNames)
+             . '। অ্যাডমিনকে জানিয়ে পদটি পূরণ করার পর আবার চেষ্টা করুন।');
+    }
+}
+
 if (empty($chain)) {
-    out(0, 'এই ছুটির জন্য কোনো অনুমোদন চেইন কনফিগার করা নেই — অ্যাডমিন কে জানান');
+    out(0, 'এই ছুটির জন্য কোনো অনুমোদন চেইন পাওয়া যায়নি — অ্যাডমিন কে জানান');
 }
 
 // Handle attachment
@@ -253,6 +281,7 @@ try {
          VALUES (?, ?, 0, 0, ?, 0, ?, ?, ?, ?, ?, ?)");
     $prevSig = $supervisorID;
     $serial = 2;
+    $substitutedSeats = [];
     foreach ($chain as $entry) {
         $sigEmpID = (int)$entry['employeeID'];
         // No serial bump on skip: the queues gate on `prev.serial = serial - 1`,
@@ -282,6 +311,7 @@ try {
         if (!mysqli_stmt_execute($chainStmt)) {
             throw new Exception('Failed to insert chain row: ' . mysqli_error($con));
         }
+        if (!empty($entry['substituted'])) $substitutedSeats[] = $sigEmpID;
         $prevSig = $sigEmpID;
         $serial++;
     }
@@ -313,11 +343,21 @@ try {
             'note'            => 'leaveApplicationID=' . $leaveApplicationID
                                . '; type=' . $joiningType
                                . '; joiningDate=' . $joiningDateIso
-                               . '; chain=' . ($serial - 2),
+                               . '; chain=' . ($serial - 2)
+                               . '; inherited=' . (empty($inherited['chain']) ? 'no' : 'yes')
+                               . ($substitutedSeats ? '; substituted=' . implode(',', $substitutedSeats) : '')
+                               . ($unresolved ? '; unresolved_seats=' . count($unresolved) : ''),
         ]);
     }
 
-    out(1, 'যোগদান পত্র সফলভাবে প্রেরিত হয়েছে', ['joiningID' => $joiningID]);
+    // Tell the applicant when a desk changed hands, so a name they don't
+    // recognise in the chain doesn't look like a mistake.
+    $doneMsg = 'যোগদান পত্র সফলভাবে প্রেরিত হয়েছে';
+    if ($substitutedSeats) {
+        $doneMsg .= '। অনুমোদন চেইনের ' . banglaNumber(count($substitutedSeats))
+                 . ' টি পদে দায়িত্ব পরিবর্তিত হওয়ায় বর্তমান কর্মকর্তাকে বসানো হয়েছে।';
+    }
+    out(1, $doneMsg, ['joiningID' => $joiningID]);
 
 } catch (Exception $e) {
     mysqli_rollback($con);
