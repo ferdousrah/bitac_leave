@@ -1128,7 +1128,7 @@ include(__DIR__ . '/../../includes/applicant_balance_modal.php');
             <div class="text-muted small mb-2" style="font-size:0.78rem;">
                 <i class="ti tabler-info-circle me-1"></i>পাঠালে আবেদনটি এই ক্রমে যাবে।
             </div>
-            <?php render_approval_chain($con, 'leave_data_for_approval', $leaveApplicationID, ['pendingForward' => true]); ?>
+            <?php render_approval_chain_editor($con, 'leave_data_for_approval', $leaveApplicationID, ['applicantId' => (int)$app['applicantID'], 'orgId' => (int)$app['organization_id']]); ?>
 
             <!-- Action buttons -->
             <div class="fwd-actions d-flex gap-2 justify-content-end flex-wrap">

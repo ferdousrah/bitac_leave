@@ -393,7 +393,7 @@ $meta = $typeMeta[$joiningType];
                 <span class="section-icon"><i class="ti tabler-route"></i></span>
             </div>
 
-            <?php render_approval_chain($con, 'leave_joining_data_for_approval', $leaveApplicationID, ['pendingForward' => !$alreadyForwarded]); ?>
+            <?php render_approval_chain_editor($con, 'leave_joining_data_for_approval', $leaveApplicationID, ['applicantId' => (int)$lja['applicantID'], 'orgId' => (int)$lja['organization_id']]); ?>
 
             <div id="formresult"></div>
 
