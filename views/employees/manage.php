@@ -65,7 +65,7 @@ window.BITAC_EMP_GATE = {
 
 <!-- Stats Strip -->
 <div class="row stats-strip mb-3 g-2">
-    <div class="col-12 col-md-6">
+    <div class="<?= $_seeAllCenters ? 'col-12 col-md-6' : 'col-12' ?>">
         <div class="stat-card stat-approved stat-clickable"
              data-tab-target="#active_employees"
              data-bs-toggle="tooltip" data-bs-placement="top"
@@ -77,6 +77,7 @@ window.BITAC_EMP_GATE = {
             </div>
         </div>
     </div>
+    <?php if ($_seeAllCenters): // অবসরপ্রাপ্তদের তালিকা কেবল হেড অফিস থেকে ?>
     <div class="col-12 col-md-6">
         <div class="stat-card stat-rejected stat-clickable"
              data-tab-target="#inactive_employees"
@@ -89,6 +90,7 @@ window.BITAC_EMP_GATE = {
             </div>
         </div>
     </div>
+    <?php endif; ?>
 </div>
 
 <!-- Card -->
@@ -103,6 +105,7 @@ window.BITAC_EMP_GATE = {
                     <span class="badge ms-2"><?php echo banglaNumber($activeCount); ?></span>
                 </button>
             </li>
+            <?php if ($_seeAllCenters): ?>
             <li class="nav-item">
                 <button type="button" class="nav-link" role="tab"
                         data-bs-toggle="tab" data-bs-target="#inactive_employees">
@@ -111,6 +114,7 @@ window.BITAC_EMP_GATE = {
                     <span class="badge ms-2"><?php echo banglaNumber($inactiveCount); ?></span>
                 </button>
             </li>
+            <?php endif; ?>
             <li class="nav-item">
                 <button type="button" class="nav-link <?= $pendingCount > 0 ? 'has-pending' : '' ?>" role="tab"
                         data-bs-toggle="tab" data-bs-target="#pending_section_employees">
@@ -142,6 +146,7 @@ window.BITAC_EMP_GATE = {
             </div>
 
             <!-- Inactive Employees Tab -->
+            <?php if ($_seeAllCenters): ?>
             <div class="tab-pane fade" id="inactive_employees" role="tabpanel">
                 <?php $scope = 'inact'; require __DIR__ . '/manage-filter.inc.php'; ?>
                 <div class="table-responsive">
@@ -159,6 +164,7 @@ window.BITAC_EMP_GATE = {
                     </table>
                 </div>
             </div>
+            <?php endif; ?>
 
             <!-- Pending Section Assignment (Incoming Transfers) Tab -->
             <div class="tab-pane fade" id="pending_section_employees" role="tabpanel">

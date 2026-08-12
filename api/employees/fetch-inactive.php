@@ -18,6 +18,19 @@ $_isSuperAdmin  = ((int)($_actor['user_group_id'] ?? 0) === 1);
 $_myCenterID    = (int)($_actor['emp_org'] ?? 0);
 $_seeAllCenters = ($_isSuperAdmin || $_myCenterID === 4); // HQ = id 4
 
+// The অবসরপ্রাপ্ত list is head-office only. The tab is hidden elsewhere, but hiding
+// markup is not access control — a request from any other centre is refused here.
+if (!$_seeAllCenters) {
+    echo json_encode([
+        'draw'            => isset($_POST['draw']) ? (int)$_POST['draw'] : 1,
+        'recordsTotal'    => 0,
+        'recordsFiltered' => 0,
+        'data'            => [],
+        'error'           => 'অবসরপ্রাপ্তদের তালিকা কেবল প্রধান কার্যালয় থেকে দেখা যাবে।',
+    ]);
+    exit;
+}
+
 // Constants for columns to avoid hardcoding
 define('COLUMNS', ['employee_name', 'employee_id', 'section_name', 'organization_name']);
 
