@@ -86,11 +86,8 @@ mysqli_stmt_close($lsStmt);
 // ═══════════════════════════════════════════════════════════════════
 $ROLE_GROUPS = [
     10 => ['title' => 'বিভাগীয় প্রধান',              'icon' => 'tabler-user-star',     'color' => '#6c5ce7'],
-    // Same group ids at the head office, but "Regional" is the wrong word there.
-    7  => ['title' => $centerID === 4 ? 'Head Office Super Admin' : 'Regional Super Admin',
-           'icon' => 'tabler-shield-star',   'color' => '#1a7e44'],
-    8  => ['title' => $centerID === 4 ? 'Head Office Operational Admin' : 'Regional Op. Admin',
-           'icon' => 'tabler-settings-cog',  'color' => '#0ea5e9'],
+    7  => ['title' => 'Regional Super Admin',         'icon' => 'tabler-shield-star',   'color' => '#1a7e44'],
+    8  => ['title' => 'Regional Op. Admin',           'icon' => 'tabler-settings-cog',  'color' => '#0ea5e9'],
     12 => ['title' => 'Signatory (Lower Admin + Fin)','icon' => 'tabler-file-check',    'color' => '#f59e0b'],
     11 => ['title' => 'Signatory (Lower Admin)',      'icon' => 'tabler-file-text',     'color' => '#b8651a'],
     4  => ['title' => 'Signatory (Mid + Top)',        'icon' => 'tabler-crown',         'color' => '#dc3545'],
