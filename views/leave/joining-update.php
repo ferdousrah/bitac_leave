@@ -1,6 +1,7 @@
 <?php
 require_once(__DIR__ . '/../../includes/header_vuexy.php');
 require_once(LIBRARY_PATH . '/number_converter.php');
+require_once(__DIR__ . '/../../includes/approval-chain-preview.php');
 
 // Re-query user
 $_stmt = mysqli_prepare($con,
@@ -381,6 +382,18 @@ $meta = $typeMeta[$joiningType];
                 <tbody id="previewBody"><tr><td colspan="6" class="text-center text-muted">তারিখ পরিবর্তন করলে preview দেখাবে</td></tr></tbody>
             </table>
             <div id="previewDiff" style="background:#f0edff; border:1px solid #ddd5f6; border-radius:0.5rem; padding:8px 12px; font-size:0.82rem; color:#2c2e3a; margin-top:6px;"></div>
+
+            <!-- Section 4: where the letter goes once forwarded -->
+            <div class="section-hdr" data-color="green">
+                <div class="section-num">৪</div>
+                <div class="section-text">
+                    <h6 class="section-title">অনুমোদন চেইন</h6>
+                    <span class="section-sub">Forward করলে যোগদান পত্র এই ক্রমে যাবে</span>
+                </div>
+                <span class="section-icon"><i class="ti tabler-route"></i></span>
+            </div>
+
+            <?php render_approval_chain($con, 'leave_joining_data_for_approval', $leaveApplicationID, ['pendingForward' => !$alreadyForwarded]); ?>
 
             <div id="formresult"></div>
 

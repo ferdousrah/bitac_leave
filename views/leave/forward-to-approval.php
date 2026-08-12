@@ -4,6 +4,7 @@ require_once(__DIR__ . '/../../includes/header_vuexy.php');
 // and day counts with it.
 require_once(LIBRARY_PATH . '/number_converter.php');
 require_once(__DIR__ . '/../../includes/segment-history-timeline.php');
+require_once(__DIR__ . '/../../includes/approval-chain-preview.php');
 
 $leaveApplicationID = intval($_GET['leaveApplicationID'] ?? 0);
 $menuslug           = htmlspecialchars($_GET['menuslug'] ?? 'allowed-leave-applications');
@@ -1118,6 +1119,16 @@ include(__DIR__ . '/../../includes/applicant_balance_modal.php');
                     border: 2px dashed #b9b0f4;
                 }
             </style>
+
+            <!-- Where it goes once forwarded -->
+            <h6 class="copyto-section-title mt-4">
+                <span class="ti-tile"><i class="ti tabler-route"></i></span>
+                অনুমোদন চেইন
+            </h6>
+            <div class="text-muted small mb-2" style="font-size:0.78rem;">
+                <i class="ti tabler-info-circle me-1"></i>পাঠালে আবেদনটি এই ক্রমে যাবে।
+            </div>
+            <?php render_approval_chain($con, 'leave_data_for_approval', $leaveApplicationID, ['pendingForward' => true]); ?>
 
             <!-- Action buttons -->
             <div class="fwd-actions d-flex gap-2 justify-content-end flex-wrap">
