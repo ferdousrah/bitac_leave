@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once(__DIR__ . '/../../config/connection.php');
+require_once(__DIR__ . '/../../includes/approval-chain-preview.php');
 header('Content-Type: application/json');
 
 // Get current user (admin)
@@ -98,6 +99,16 @@ mysqli_stmt_bind_param($updStmt, 'ssiisssiiii',
     $leaveApplicationID);
 mysqli_stmt_execute($updStmt);
 
+// The নোট উপস্থাপনকারী may have re-ordered or replaced the pending desks before
+// sending. Applied before the forward flag below so the new rows get it too.
+$chainEdit = ['changed' => false];
+if (!empty($_POST['chainSignatory']) && is_array($_POST['chainSignatory'])) {
+    $_apRow = mysqli_fetch_assoc(mysqli_query($con,
+        "SELECT applicantID FROM leave_applications WHERE dataID = " . (int)$leaveApplicationID . " LIMIT 1"));
+    $chainEdit = applyChainEdit($con, 'leave_data_for_approval', $leaveApplicationID,
+        $_POST['chainSignatory'], (int)($_apRow['applicantID'] ?? 0));
+}
+
 // Mark all approval rows as sent by admin
 $fwdStmt = mysqli_prepare($con,
     "UPDATE leave_data_for_approval SET isSentbyAdmin=1 WHERE leaveApplicationID=?");
@@ -176,7 +187,10 @@ if (function_exists('audit_log')) {
     audit_log('leave_forwarded_to_approval', [
         'target_type' => 'leave_application',
         'target_id'   => (int)$leaveApplicationID,
-        'note'        => 'forwarded by admin (dates ' . $leaveFrom . ' → ' . $leaveTo . ')',
+        'note'        => 'forwarded by admin (dates ' . $leaveFrom . ' → ' . $leaveTo . ')'
+                       . (!empty($chainEdit['changed'])
+                           ? '; chain reordered ' . implode(',', $chainEdit['before']) . ' → ' . implode(',', $chainEdit['after'])
+                           : ''),
     ]);
 }
 

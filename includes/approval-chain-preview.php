@@ -140,3 +140,104 @@ function render_approval_chain($con, $table, $leaveApplicationID, array $opts = 
 }
 
 }
+
+if (!function_exists('applyChainEdit')) {
+/**
+ * Rewrites the pending part of an approval chain to the order the নোট
+ * উপস্থাপনকারী chose at forward time.
+ *
+ * Desks that have already acted are untouchable — the supervisor's সুপারিশ and
+ * any approval already given stay exactly where they are. Only rows still
+ * waiting get replaced.
+ *
+ * Serials are renumbered contiguously and prevSignatory rewired, because five
+ * queues decide whose turn it is with `prev.serial = serial - 1`; a hole there
+ * stalls the application forever and hides it from the queue and the badge.
+ *
+ * @param array $signatoryIds ordered employee_list ids for the pending steps
+ * @return array{changed:bool, before:array, after:array, skipped:array}
+ */
+function applyChainEdit($con, $table, $leaveApplicationID, array $signatoryIds, $applicantId = 0)
+{
+    $allowed = ['leave_data_for_approval', 'leave_joining_data_for_approval'];
+    if (!in_array($table, $allowed, true)) return ['changed' => false, 'before' => [], 'after' => [], 'skipped' => []];
+
+    $appID       = (int)$leaveApplicationID;
+    $applicantId = (int)$applicantId;
+
+    $rows = [];
+    $q = mysqli_query($con,
+        "SELECT dataID, signatory, serial, isSupervisor, isApproved
+         FROM `$table` WHERE leaveApplicationID = $appID
+         ORDER BY serial ASC, dataID ASC");
+    if ($q) while ($r = mysqli_fetch_assoc($q)) $rows[] = $r;
+    if (empty($rows)) return ['changed' => false, 'before' => [], 'after' => [], 'skipped' => []];
+
+    $keep = [];      // already acted, or the supervisor seat — never rewritten
+    $before = [];
+    foreach ($rows as $r) {
+        if ((int)$r['isSupervisor'] === 1 || (int)$r['isApproved'] !== 0) {
+            $keep[] = $r;
+        } else {
+            $before[] = (int)$r['signatory'];
+        }
+    }
+
+    // Drop anything invalid before comparing, so a no-op edit stays a no-op.
+    $clean = [];
+    $skipped = [];
+    foreach ($signatoryIds as $sid) {
+        $sid = (int)$sid;
+        if ($sid <= 0 || $sid === $applicantId || in_array($sid, $clean, true)) { $skipped[] = $sid; continue; }
+        $chk = mysqli_query($con,
+            "SELECT id FROM employee_list
+             WHERE id = $sid AND employment_status = 1 AND pending_section_assignment = 0 LIMIT 1");
+        if (!$chk || mysqli_num_rows($chk) === 0) { $skipped[] = $sid; continue; }
+        $clean[] = $sid;
+    }
+
+    if (empty($clean) || $clean === $before) {
+        // Never leave an application with no one left to approve it.
+        return ['changed' => false, 'before' => $before, 'after' => $before, 'skipped' => $skipped];
+    }
+
+    $del = mysqli_prepare($con,
+        "DELETE FROM `$table` WHERE leaveApplicationID = ? AND isSupervisor = 0 AND isApproved = 0");
+    mysqli_stmt_bind_param($del, 'i', $appID);
+    if (!mysqli_stmt_execute($del)) throw new Exception('চেইন হালনাগাদ ব্যর্থ');
+    mysqli_stmt_close($del);
+
+    // Continue numbering after the last kept desk so serials stay contiguous.
+    $serial  = 1;
+    $prevSig = 0;
+    foreach ($keep as $k) {
+        $serial  = max($serial, (int)$k['serial']);
+        $prevSig = (int)$k['signatory'];
+    }
+    $serial++;
+
+    $ins = mysqli_prepare($con,
+        "INSERT INTO `$table`
+         (leaveApplicationID, signatory, isSupervisor, isSentbyAdmin, prevSignatory, isApproved, serial,
+          organization_id, department_id, section_id, designation_id, pay_scale)
+         VALUES (?, ?, 0, 0, ?, 0, ?, ?, ?, ?, ?, ?)");
+    foreach ($clean as $sid) {
+        $snap = mysqli_fetch_assoc(mysqli_query($con,
+            "SELECT organization_id, department_id, section_id, designation, pay_scale
+             FROM employee_list WHERE id = $sid LIMIT 1")) ?: [];
+        $sOrg   = (int)($snap['organization_id'] ?? 0);
+        $sDept  = (int)($snap['department_id']   ?? 0);
+        $sSec   = (int)($snap['section_id']      ?? 0);
+        $sDesig = (int)($snap['designation']     ?? 0);
+        $sPay   = $snap['pay_scale']             ?? '';
+        mysqli_stmt_bind_param($ins, 'iiiiiiiis',
+            $appID, $sid, $prevSig, $serial, $sOrg, $sDept, $sSec, $sDesig, $sPay);
+        if (!mysqli_stmt_execute($ins)) throw new Exception('চেইন সারি যোগ ব্যর্থ');
+        $prevSig = $sid;
+        $serial++;
+    }
+    mysqli_stmt_close($ins);
+
+    return ['changed' => true, 'before' => $before, 'after' => $clean, 'skipped' => $skipped];
+}
+}

@@ -5,6 +5,7 @@ header('Content-Type: application/json');
 ob_start();
 require_once(__DIR__ . '/../../connection.php');
 require_once(__DIR__ . '/../../bddate.php');
+require_once(__DIR__ . '/../../includes/approval-chain-preview.php');
 ob_end_clean();
 
 function out($status, $message, $extra = []) {
@@ -117,6 +118,14 @@ try {
     }
     mysqli_stmt_close($updStmt);
 
+    // The নোট উপস্থাপনকারী may have re-ordered or replaced the pending desks.
+    // Applied before the forward flag below so the new rows pick it up too.
+    $chainEdit = ['changed' => false];
+    if (!empty($_POST['chainSignatory']) && is_array($_POST['chainSignatory'])) {
+        $chainEdit = applyChainEdit($con, 'leave_joining_data_for_approval', $leaveAppID,
+            $_POST['chainSignatory'], (int)$lja['applicantID']);
+    }
+
     // 2. Forward chain — set isSentbyAdmin=1 on all rows for this application
     //    (Legacy convention sets it on supervisor row too; the inbox query treats
     //    isSentbyAdmin=1 on supervisor row as "admin has forwarded" sentinel.)
@@ -163,7 +172,10 @@ try {
             'organization_id' => $appOrgID ?: null,
             'note'            => 'type=' . $joiningType
                                . '; joiningDate=' . $joiningDate
-                               . ($joiningType === 3 ? '; extLT=' . $extLeaveType : ''),
+                               . ($joiningType === 3 ? '; extLT=' . $extLeaveType : '')
+                               . (!empty($chainEdit['changed'])
+                                   ? '; chain reordered ' . implode(',', $chainEdit['before']) . ' → ' . implode(',', $chainEdit['after'])
+                                   : ''),
         ]);
     }
 
