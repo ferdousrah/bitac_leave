@@ -48,7 +48,13 @@ if (!$centerData) {
 // ── Regional roles config ───────────────────────────────────────────
 // We're moving from legacy "Center Admin (isCenterAdmin=1)" to two separate
 // approval-gated roles: Regional Super Admin (group_id=7) and Regional Op. Admin (group_id=8).
-$REGIONAL_ROLES = [
+// "Regional" reads wrong on the head office's own page — the roles there belong
+// to প্রধান কার্যালয়, not to a region. Same group ids, different wording.
+$IS_HEAD_OFFICE = ($dataID === 4);
+$REGIONAL_ROLES = $IS_HEAD_OFFICE ? [
+    7 => ['label' => 'Head Office Super Admin',       'icon' => 'tabler-shield-star'],
+    8 => ['label' => 'Head Office Operational Admin', 'icon' => 'tabler-shield-half'],
+] : [
     7 => ['label' => 'Regional Super Admin', 'icon' => 'tabler-shield-star'],
     8 => ['label' => 'Regional Op. Admin',   'icon' => 'tabler-shield-half'],
 ];
