@@ -1,5 +1,6 @@
 <?php
 require_once(__DIR__ . '/../../includes/header_vuexy.php');
+require_once(LIBRARY_PATH . '/number_converter.php');
 
 // Auto-create routing rules table if missing (grades column = comma-separated grade IDs)
 mysqli_query($con, "CREATE TABLE IF NOT EXISTS leave_signatory_rule (
@@ -28,6 +29,44 @@ $rulesQ = mysqli_query($con, "
     LEFT JOIN leave_types lt ON r.leave_type_id = lt.leaveID
     ORDER BY r.id ASC
 ");
+
+
+// ── Coverage gap check ────────────────────────────────────────────────
+// A grade with staff but no routing rule is invisible until someone applies:
+// buildSignatoryChain() returns nothing for them, so the application silently
+// drops to the legacy designation-based path — no route, no HQ escalation, and
+// no forced climb to the DG for a signatory's own leave. Surfacing it here means
+// it gets noticed while the rules are being edited rather than months later.
+$coveredGrades = [];
+$_covQ = mysqli_query($con, "SELECT grades FROM leave_signatory_rule");
+if ($_covQ) {
+    while ($_c = mysqli_fetch_assoc($_covQ)) {
+        foreach (explode(',', $_c['grades']) as $_g) {
+            $_g = (int)trim($_g);
+            if ($_g > 0) $coveredGrades[$_g] = true;
+        }
+    }
+}
+
+$gradeGaps = [];
+$_gapQ = mysqli_query($con, "
+    SELECT el.pay_scale AS grade_id, g.grade_title, COUNT(*) AS staff,
+           SUM(CASE WHEN las.employeeID IS NOT NULL THEN 1 ELSE 0 END) AS signatories
+    FROM employee_list el
+    INNER JOIN grade g ON g.id = el.pay_scale
+    LEFT JOIN (SELECT DISTINCT employeeID FROM leave_approval_signatory) las
+           ON las.employeeID = el.id
+    WHERE el.employment_status = 1
+      AND el.pending_section_assignment = 0
+      AND el.pay_scale IS NOT NULL AND el.pay_scale <> ''
+    GROUP BY el.pay_scale, g.grade_title
+    ORDER BY CAST(el.pay_scale AS UNSIGNED) ASC
+");
+if ($_gapQ) {
+    while ($_r = mysqli_fetch_assoc($_gapQ)) {
+        if (!isset($coveredGrades[(int)$_r['grade_id']])) $gradeGaps[] = $_r;
+    }
+}
 
 $menuslug = htmlspecialchars($_GET['menuslug'] ?? 'leave-settings');
 ?>
@@ -293,6 +332,42 @@ $menuslug = htmlspecialchars($_GET['menuslug'] ?? 'leave-settings');
         <i class="ti tabler-plus me-1"></i>নতুন নিয়ম যোগ করুন
     </button>
 </div>
+
+<?php if (!empty($gradeGaps)): ?>
+<div class="alert alert-warning d-flex mb-3" role="alert">
+    <i class="ti tabler-alert-triangle me-2 mt-1"></i>
+    <div>
+        <div class="fw-semibold mb-1">
+            <?= banglaNumber(count($gradeGaps)) ?> টি গ্রেডে কর্মরত কর্মচারী আছেন, কিন্তু কোনো রাউটিং নিয়ম নেই
+        </div>
+        <div class="mb-2">
+            <?php foreach ($gradeGaps as $gp): ?>
+                <span class="badge bg-label-warning me-1 mb-1">
+                    <?= htmlspecialchars($gp['grade_title']) ?>
+                    — <?= banglaNumber((int)$gp['staff']) ?> জন<?php
+                        if ((int)$gp['signatories'] > 0) {
+                            echo ', এর মধ্যে ' . banglaNumber((int)$gp['signatories']) . ' জন স্বাক্ষরকারী';
+                        } ?>
+                </span>
+            <?php endforeach; ?>
+        </div>
+        <div class="small mb-1">
+            নিয়ম না থাকলে এই গ্রেডের আবেদন গ্রেড-ভিত্তিক চেইন পায় না — পুরনো পদ-ভিত্তিক
+            পথে চলে যায়। ফলে <strong>প্রধান কার্যালয় পর্যন্ত escalation হয় না</strong>, আর
+            <strong>স্বাক্ষরকারী নিজে আবেদন করলে মহাপরিচালক পর্যন্ত পৌঁছায় না</strong>।
+        </div>
+        <div class="small text-muted">
+            সমাধান: নিচের তালিকায় উপযুক্ত নিয়মটি সম্পাদনা করে গ্রেডটি যোগ করুন, অথবা নতুন নিয়ম তৈরি করুন।
+            সাধারণত পাশের গ্রেডের নিয়মই অনুসরণ করা হয়।
+        </div>
+    </div>
+</div>
+<?php else: ?>
+<div class="alert alert-success d-flex align-items-center mb-3 py-2" role="alert">
+    <i class="ti tabler-circle-check me-2"></i>
+    <div class="small">কর্মরত কর্মচারী আছেন এমন প্রতিটি গ্রেডেই রাউটিং নিয়ম নির্ধারিত আছে।</div>
+</div>
+<?php endif; ?>
 
 <div class="card rules-card shadow-sm border-0">
     <div class="card-body p-0">
