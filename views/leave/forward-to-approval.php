@@ -5,6 +5,7 @@ require_once(__DIR__ . '/../../includes/header_vuexy.php');
 require_once(LIBRARY_PATH . '/number_converter.php');
 require_once(__DIR__ . '/../../includes/segment-history-timeline.php');
 require_once(__DIR__ . '/../../includes/approval-chain-preview.php');
+require_once(__DIR__ . '/../../includes/default-notice-copies.php');
 
 $leaveApplicationID = intval($_GET['leaveApplicationID'] ?? 0);
 $menuslug           = htmlspecialchars($_GET['menuslug'] ?? 'allowed-leave-applications');
@@ -107,16 +108,12 @@ if (!$_hasAnyCopy || !$_hasLabelRow) {
     // Pull configured defaults from DB — table auto-created + seeded
     // by views/default-notice-copies/manage.php. Fall back to the
     // legacy hardcoded trio if the table doesn't exist yet.
-    $_seedLabels = [];
-    $__tblChk = mysqli_query($con, "SHOW TABLES LIKE 'default_notice_copies'");
-    if ($__tblChk && mysqli_num_rows($__tblChk) > 0) {
-        $_dcQ = mysqli_query($con,
-            "SELECT label FROM default_notice_copies
-             WHERE isActive = 1
-               AND (context = 'leave' OR context IS NULL OR context = '')
-             ORDER BY serial ASC, dataID ASC");
-        while ($_dcQ && $_dcR = mysqli_fetch_assoc($_dcQ)) $_seedLabels[] = $_dcR['label'];
-    }
+    // Read through the shared helper: it tolerates installs where the table or
+    // its context column hasn't been created yet. Querying context directly
+    // blanked this page wherever the column was still missing, because mysqli
+    // throws on PHP 8 and the fatal landed mid-render.
+    $_centerNameForSeed = trim($orgData['organization_name'] ?? '—');
+    $_seedLabels = default_notice_labels($con, 'leave', $_centerNameForSeed);
     if (empty($_seedLabels)) {
         $_seedLabels = [
             'প্রশাসন বিভাগ, বিটাক, {center}',
