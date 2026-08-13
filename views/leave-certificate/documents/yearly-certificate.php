@@ -374,12 +374,20 @@ function generatePDFData($employeeID, $year) {
         $html .= '</td>';
         $html .= '</tr></table>';
 
-        // Copy-to list
-        if (!empty($copyToList)) {
+        // Copy-to list — fixed-text recipients from কনফিগারেশন → ডিফল্ট অনুলিপি
+        // (ছুটি সনদ) first, then the per-employee entries.
+        require_once(__DIR__ . '/../../../includes/default-notice-copies.php');
+        $defaultLabels = default_notice_labels($con, 'certificate', $orgData['organization_name'] ?? '');
+
+        if (!empty($copyToList) || !empty($defaultLabels)) {
             $html .= '<p>&nbsp;</p>';
             $html .= '<p>অনুলিপি (সদয় অবগতি ও প্রয়োজনীয় কার্যার্থে):</p>';
 
             $copySL = 1;
+            foreach ($defaultLabels as $__lbl) {
+                $html .= '<p>' . banglaNumber($copySL) . '। ' . htmlspecialchars($__lbl) . '</p>';
+                $copySL++;
+            }
             foreach ($copyToList as $copy) {
                 // Get copy employee
                 $stmt = $con->prepare("SELECT * FROM employee_list WHERE id = ?");

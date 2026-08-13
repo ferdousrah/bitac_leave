@@ -193,7 +193,14 @@ $getIncrementSettDataQRW = mysqli_fetch_assoc($getIncrementSettDataQ);
     <p style="font-size: 15px;font-weight: bold;">অনুলিপি :</p>
 
     <?php
+    // Fixed-text recipients from কনফিগারেশন → ডিফল্ট অনুলিপি (বার্ষিক বেতন বৃদ্ধি),
+    // numbered ahead of the per-employee entries below.
+    require_once(__DIR__ . '/../../includes/default-notice-copies.php');
     $copySL = 1;
+    foreach (default_notice_labels($con, 'increment', $getorgDetailsQRW['organization_name'] ?? '') as $__lbl) {
+        echo '<p style="font-size: 15px;">' . $obj->engToBn($copySL) . '। ' . htmlspecialchars($__lbl) . '</p>';
+        $copySL++;
+    }
     while ($copyRow = mysqli_fetch_array($getCopyToQ)) {
         $getCopyToDetailsQ = mysqli_query($con, "SELECT * FROM employee_list WHERE id='" . intval($copyRow['employeeID']) . "'");
         $getCopyToDetailsQRW = mysqli_fetch_assoc($getCopyToDetailsQ);
