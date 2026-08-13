@@ -402,13 +402,6 @@ $meta = $typeMeta[$joiningType];
                     <label class="col-md-3 col-form-label">
                         বর্ধিত অংশের ছুটি <span class="text-danger">*</span>
                         <div class="ext-total-inline mt-1">
-                            <span class="ext-pill ext-target" title="অনুমোদিত শেষ তারিখের পরদিন থেকে যোগদানের তারিখ পর্যন্ত হিসাব করা">
-                                <i class="ti tabler-calendar-clock me-1"></i>
-                                প্রয়োজন <strong id="extTotalTarget">০</strong> দিন
-                            </span>
-                            <span class="ext-pill ext-given" title="নিচের সারিগুলোতে দেওয়া দিনের যোগফল">
-                                বন্টিত <strong id="extTotalGiven">০</strong> দিন
-                            </span>
                             <span id="extBalanceHint" class="ext-pill ext-warn" style="display:none;">
                                 <i class="ti tabler-alert-triangle me-1"></i><span id="extBalanceHintText"></span>
                             </span>
@@ -618,8 +611,6 @@ $meta = $typeMeta[$joiningType];
                 cursor = addDays(toIso, 1);
                 given += days;
             });
-            $('#extTotalTarget').text(beNum(totalTarget));
-            $('#extTotalGiven').text(beNum(given));
             var $hint = $('#extBalanceHint'), $hintTxt = $('#extBalanceHintText');
             if (totalTarget <= 0) {
                 $hint.hide();
