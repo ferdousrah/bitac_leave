@@ -118,6 +118,27 @@ try {
     }
     mysqli_stmt_close($updStmt);
 
+    // The desk's "বর্ধিত অংশের ছুটির ধরন" has to reach extensionSegmentsJson too.
+    // Display and finalize both read the JSON in preference to approvedLeaveType,
+    // so writing only the latter left the extension showing the applicant's
+    // original choice however the desk changed it.
+    if ($joiningType === 3 && $extLeaveType > 0 && !empty($lja['extensionSegmentsJson'])) {
+        $__extSegs = json_decode($lja['extensionSegmentsJson'], true);
+        // A single dropdown can only speak for a single segment; a multi-row
+        // extension keeps its per-row types rather than being flattened.
+        if (is_array($__extSegs) && count($__extSegs) === 1
+            && (int)($__extSegs[0]['leaveType'] ?? 0) !== $extLeaveType) {
+            $__extSegs[0]['leaveType'] = $extLeaveType;
+            $__extJson = json_encode($__extSegs, JSON_UNESCAPED_UNICODE);
+            $__ejStmt = mysqli_prepare($con,
+                "UPDATE leave_joining_application SET extensionSegmentsJson = ? WHERE dataID = ?");
+            mysqli_stmt_bind_param($__ejStmt, 'si', $__extJson, $joiningID);
+            if (!mysqli_stmt_execute($__ejStmt)) throw new Exception('বর্ধিত অংশের ছুটির ধরন হালনাগাদ ব্যর্থ');
+            mysqli_stmt_close($__ejStmt);
+            $lja['extensionSegmentsJson'] = $__extJson;
+        }
+    }
+
 $segTypeChanges = [];
     // The desk may have corrected the leave type on the already-approved
     // segments (e.g. নৈমিত্তিক that should have been গড় বেতন). Only the type
