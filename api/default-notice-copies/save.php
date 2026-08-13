@@ -25,9 +25,19 @@ mysqli_query($con, "
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 ");
 
+// Contexts split the list three ways — the copy recipients differ between a
+// leave office order, a salary increment and a leave certificate.
+$__ctxChk = mysqli_query($con, "SHOW COLUMNS FROM default_notice_copies LIKE 'context'");
+if (!$__ctxChk || mysqli_num_rows($__ctxChk) === 0) {
+    mysqli_query($con, "ALTER TABLE default_notice_copies
+        ADD COLUMN context VARCHAR(20) NOT NULL DEFAULT 'leave' AFTER label");
+}
+
 $dataID   = (int)($_POST['dataID']   ?? 0);
 $label    = trim((string)($_POST['label']    ?? ''));
 $isActive = (int)!!($_POST['isActive'] ?? 0);
+$context  = (string)($_POST['context'] ?? 'leave');
+if (!in_array($context, ['leave', 'increment', 'certificate'], true)) $context = 'leave';
 
 if ($label === '') reply(false, 'লেবেল খালি রাখা যাবে না');
 if (mb_strlen($label) > 255) reply(false, 'লেবেল ২৫৫ অক্ষরের বেশি হতে পারবে না');
@@ -46,10 +56,14 @@ if ($dataID > 0) {
     }
 } else {
     // Append at the end
-    $maxQ = mysqli_query($con, "SELECT COALESCE(MAX(serial), 0) AS m FROM default_notice_copies");
-    $nextSerial = (int)(mysqli_fetch_assoc($maxQ)['m'] ?? 0) + 1;
-    $stmt = mysqli_prepare($con, "INSERT INTO default_notice_copies (label, serial, isActive) VALUES (?, ?, ?)");
-    mysqli_stmt_bind_param($stmt, 'sii', $label, $nextSerial, $isActive);
+    // Serial runs per context, so each list numbers from 1 independently.
+    $maxStmt = mysqli_prepare($con, "SELECT COALESCE(MAX(serial), 0) AS m FROM default_notice_copies WHERE context = ?");
+    mysqli_stmt_bind_param($maxStmt, 's', $context);
+    mysqli_stmt_execute($maxStmt);
+    $nextSerial = (int)(mysqli_fetch_assoc(mysqli_stmt_get_result($maxStmt))['m'] ?? 0) + 1;
+    mysqli_stmt_close($maxStmt);
+    $stmt = mysqli_prepare($con, "INSERT INTO default_notice_copies (label, context, serial, isActive) VALUES (?, ?, ?, ?)");
+    mysqli_stmt_bind_param($stmt, 'ssii', $label, $context, $nextSerial, $isActive);
     $ok = mysqli_stmt_execute($stmt);
     $newId = mysqli_insert_id($con);
     mysqli_stmt_close($stmt);

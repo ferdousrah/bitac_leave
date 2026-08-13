@@ -113,6 +113,7 @@ if (!$_hasAnyCopy || !$_hasLabelRow) {
         $_dcQ = mysqli_query($con,
             "SELECT label FROM default_notice_copies
              WHERE isActive = 1
+               AND (context = 'leave' OR context IS NULL OR context = '')
              ORDER BY serial ASC, dataID ASC");
         while ($_dcQ && $_dcR = mysqli_fetch_assoc($_dcQ)) $_seedLabels[] = $_dcR['label'];
     }

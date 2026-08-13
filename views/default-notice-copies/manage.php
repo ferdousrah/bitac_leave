@@ -14,6 +14,14 @@ mysqli_query($con, "
         createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 ");
+// Contexts split the list three ways — the copy recipients differ between a
+// leave office order, a salary increment and a leave certificate.
+$__ctxChk = mysqli_query($con, "SHOW COLUMNS FROM default_notice_copies LIKE 'context'");
+if (!$__ctxChk || mysqli_num_rows($__ctxChk) === 0) {
+    mysqli_query($con, "ALTER TABLE default_notice_copies
+        ADD COLUMN context VARCHAR(20) NOT NULL DEFAULT 'leave' AFTER label");
+}
+
 $__seedChk = mysqli_query($con, "SELECT COUNT(*) c FROM default_notice_copies");
 if ($__seedChk && (int)(mysqli_fetch_assoc($__seedChk)['c'] ?? 0) === 0) {
     $__seeds = [
@@ -31,12 +39,24 @@ if ($__seedChk && (int)(mysqli_fetch_assoc($__seedChk)['c'] ?? 0) === 0) {
     mysqli_stmt_close($__ins);
 }
 
-$rows = [];
+$CONTEXTS = [
+    'leave'       => ['title' => 'ছুটির আবেদন',        'icon' => 'tabler-calendar-event', 'sub' => 'ছুটির অফিস আদেশে যে অনুলিপি প্রাপকরা যোগ হবেন'],
+    'increment'   => ['title' => 'বার্ষিক বেতন বৃদ্ধি', 'icon' => 'tabler-coin',           'sub' => 'বেতন বৃদ্ধির আদেশে যে অনুলিপি প্রাপকরা যোগ হবেন'],
+    'certificate' => ['title' => 'ছুটি সনদ',            'icon' => 'tabler-certificate',    'sub' => 'ছুটির সনদে যে অনুলিপি প্রাপকরা যোগ হবেন'],
+];
+
+$byContext = array_fill_keys(array_keys($CONTEXTS), []);
 $q = mysqli_query($con, "SELECT * FROM default_notice_copies ORDER BY serial ASC, dataID ASC");
-while ($q && $r = mysqli_fetch_assoc($q)) $rows[] = $r;
-$total = count($rows);
-$activeCount = 0;
-foreach ($rows as $r) if ((int)$r['isActive'] === 1) $activeCount++;
+while ($q && $r = mysqli_fetch_assoc($q)) {
+    $ctx = $r['context'] ?? 'leave';
+    if (!isset($byContext[$ctx])) $ctx = 'leave';
+    $byContext[$ctx][] = $r;
+}
+$total = 0; $activeCount = 0;
+foreach ($byContext as $list) {
+    $total += count($list);
+    foreach ($list as $r) if ((int)$r['isActive'] === 1) $activeCount++;
+}
 ?>
 
 <!-- Page Header -->
@@ -84,56 +104,79 @@ foreach ($rows as $r) if ((int)$r['isActive'] === 1) $activeCount++;
     </div>
 </div>
 
-<!-- Table -->
+<!-- Three lists — the copy recipients differ per document type -->
 <div class="card shadow-sm border-0">
-    <div class="card-body">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle" id="defaultsTable">
-                <thead>
-                    <tr>
-                        <th width="40" class="text-center">—</th>
-                        <th width="70" class="text-center">ক্রম</th>
-                        <th>লেবেল</th>
-                        <th width="100" class="text-center">অবস্থা</th>
-                        <th width="120" class="text-center">কার্যাবলী</th>
-                    </tr>
-                </thead>
-                <tbody id="defaultsBody">
-                    <?php foreach ($rows as $i => $r): ?>
-                    <tr data-id="<?= (int)$r['dataID'] ?>">
-                        <td class="text-center drag-handle" style="cursor:grab;color:#8a90a6;" title="টেনে সরান">
-                            <i class="ti tabler-grip-vertical"></i>
-                        </td>
-                        <td class="text-center row-serial"><?= banglaNumber($i + 1) ?></td>
-                        <td><?= htmlspecialchars($r['label']) ?></td>
-                        <td class="text-center">
-                            <?php if ((int)$r['isActive'] === 1): ?>
-                                <span class="badge bg-label-success"><i class="ti tabler-check me-1"></i>সক্রিয়</span>
-                            <?php else: ?>
-                                <span class="badge bg-label-secondary"><i class="ti tabler-x me-1"></i>নিষ্ক্রিয়</span>
+    <div class="card-body p-0">
+        <ul class="nav custom-leave-tabs px-3 pt-3" role="tablist">
+            <?php $__first = true; foreach ($CONTEXTS as $ctx => $meta): ?>
+            <li class="nav-item">
+                <button type="button" class="nav-link <?= $__first ? 'active' : '' ?>" role="tab"
+                        data-bs-toggle="tab" data-bs-target="#tab_<?= $ctx ?>" data-context="<?= $ctx ?>">
+                    <i class="ti <?= $meta['icon'] ?> me-2"></i>
+                    <span class="d-none d-sm-inline"><?= $meta['title'] ?></span>
+                    <span class="badge ms-2"><?= banglaNumber(count($byContext[$ctx])) ?></span>
+                </button>
+            </li>
+            <?php $__first = false; endforeach; ?>
+        </ul>
+
+        <div class="tab-content p-3">
+            <?php $__first = true; foreach ($CONTEXTS as $ctx => $meta): ?>
+            <div class="tab-pane fade <?= $__first ? 'show active' : '' ?>" id="tab_<?= $ctx ?>" role="tabpanel">
+                <div class="text-muted small mb-2">
+                    <i class="ti tabler-info-circle me-1"></i><?= $meta['sub'] ?>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th width="40" class="text-center">—</th>
+                                <th width="70" class="text-center">ক্রম</th>
+                                <th>লেবেল</th>
+                                <th width="100" class="text-center">অবস্থা</th>
+                                <th width="120" class="text-center">কার্যাবলী</th>
+                            </tr>
+                        </thead>
+                        <tbody class="dnc-body" data-context="<?= $ctx ?>">
+                            <?php foreach ($byContext[$ctx] as $i => $r): ?>
+                            <tr data-id="<?= (int)$r['dataID'] ?>">
+                                <td class="text-center drag-handle" style="cursor:grab;color:#8a90a6;" title="টেনে সরান">
+                                    <i class="ti tabler-grip-vertical"></i>
+                                </td>
+                                <td class="text-center row-serial"><?= banglaNumber($i + 1) ?></td>
+                                <td><?= htmlspecialchars($r['label']) ?></td>
+                                <td class="text-center">
+                                    <?php if ((int)$r['isActive'] === 1): ?>
+                                        <span class="badge bg-label-success"><i class="ti tabler-check me-1"></i>সক্রিয়</span>
+                                    <?php else: ?>
+                                        <span class="badge bg-label-secondary"><i class="ti tabler-x me-1"></i>নিষ্ক্রিয়</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="text-center">
+                                    <button type="button" class="btn btn-sm btn-icon btn-label-primary btn-edit"
+                                            data-id="<?= (int)$r['dataID'] ?>"
+                                            data-label="<?= htmlspecialchars($r['label']) ?>"
+                                            data-active="<?= (int)$r['isActive'] ?>"
+                                            data-context="<?= $ctx ?>"
+                                            title="সম্পাদনা"><i class="ti tabler-edit"></i></button>
+                                    <button type="button" class="btn btn-sm btn-icon btn-label-danger btn-delete"
+                                            data-id="<?= (int)$r['dataID'] ?>"
+                                            data-label="<?= htmlspecialchars($r['label']) ?>"
+                                            title="মুছুন"><i class="ti tabler-trash"></i></button>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                            <?php if (empty($byContext[$ctx])): ?>
+                            <tr class="dnc-empty"><td colspan="5" class="text-center text-muted p-4">
+                                <i class="ti tabler-inbox" style="font-size:2rem;color:#b9b0f4;"></i>
+                                <div class="mt-2">এখানে কোনো ডিফল্ট অনুলিপি নেই — উপরে "নতুন যোগ করুন" চাপুন</div>
+                            </td></tr>
                             <?php endif; ?>
-                        </td>
-                        <td class="text-center">
-                            <button type="button" class="btn btn-sm btn-icon btn-label-primary btn-edit"
-                                    data-id="<?= (int)$r['dataID'] ?>"
-                                    data-label="<?= htmlspecialchars($r['label']) ?>"
-                                    data-active="<?= (int)$r['isActive'] ?>"
-                                    title="সম্পাদনা"><i class="ti tabler-edit"></i></button>
-                            <button type="button" class="btn btn-sm btn-icon btn-label-danger btn-delete"
-                                    data-id="<?= (int)$r['dataID'] ?>"
-                                    data-label="<?= htmlspecialchars($r['label']) ?>"
-                                    title="মুছুন"><i class="ti tabler-trash"></i></button>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                    <?php if (empty($rows)): ?>
-                    <tr><td colspan="5" class="text-center text-muted p-4">
-                        <i class="ti tabler-inbox" style="font-size:2rem;color:#b9b0f4;"></i>
-                        <div class="mt-2">কোনো ডিফল্ট অনুলিপি নেই — উপরে "নতুন যোগ করুন" চাপুন</div>
-                    </td></tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <?php $__first = false; endforeach; ?>
         </div>
     </div>
 </div>
@@ -149,6 +192,12 @@ foreach ($rows as $r) if ((int)$r['isActive'] === 1) $activeCount++;
             <div class="modal-body">
                 <form id="editForm">
                     <input type="hidden" name="dataID" id="fld_id" value="0">
+                    <input type="hidden" name="context" id="fld_context" value="leave">
+                    <div class="mb-3">
+                        <div class="alert alert-info py-2 mb-0" style="font-size:0.84rem;">
+                            <i class="ti tabler-folder me-1"></i>সেকশন: <strong id="fld_context_label">ছুটির আবেদন</strong>
+                        </div>
+                    </div>
                     <div class="mb-3">
                         <label class="form-label">লেবেল <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="fld_label" name="label" required
@@ -172,12 +221,12 @@ foreach ($rows as $r) if ((int)$r['isActive'] === 1) $activeCount++;
 </div>
 
 <style>
-    #defaultsBody tr.ui-sortable-helper {
+    .dnc-body tr.ui-sortable-helper {
         background: #fff !important;
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     }
-    #defaultsBody .drag-handle:hover { color: #6c5ce7 !important; }
-    #defaultsBody .drag-handle:active { cursor: grabbing !important; }
+    .dnc-body .drag-handle:hover { color: #6c5ce7 !important; }
+    .dnc-body .drag-handle:active { cursor: grabbing !important; }
     .dnc-drop-placeholder { background: #eef0f8; height: 48px; border: 2px dashed #b9b0f4; }
 </style>
 
@@ -192,7 +241,15 @@ foreach ($rows as $r) if ((int)$r['isActive'] === 1) $activeCount++;
     var editModal = new bootstrap.Modal(document.getElementById('editModal'));
 
     // Open modal for new
+    var CTX_TITLES = <?= json_encode(array_map(function ($m) { return $m['title']; }, $CONTEXTS), JSON_UNESCAPED_UNICODE) ?>;
+    function activeContext() {
+        return $('.custom-leave-tabs .nav-link.active').data('context') || 'leave';
+    }
+
     $(document).on('click', '#btnNew', function () {
+        var ctx = activeContext();
+        $('#fld_context').val(ctx);
+        $('#fld_context_label').text(CTX_TITLES[ctx] || ctx);
         $('#fld_id').val(0);
         $('#fld_label').val('');
         $('#fld_active').prop('checked', true);
@@ -203,6 +260,9 @@ foreach ($rows as $r) if ((int)$r['isActive'] === 1) $activeCount++;
     // Open modal for edit
     $(document).on('click', '.btn-edit', function () {
         var $btn = $(this);
+        var ctx = $btn.data('context') || 'leave';
+        $('#fld_context').val(ctx);
+        $('#fld_context_label').text(CTX_TITLES[ctx] || ctx);
         $('#fld_id').val($btn.data('id'));
         $('#fld_label').val($btn.data('label'));
         $('#fld_active').prop('checked', String($btn.data('active')) === '1');
@@ -220,7 +280,8 @@ foreach ($rows as $r) if ((int)$r['isActive'] === 1) $activeCount++;
                         customClass: { confirmButton: 'btn btn-warning' }, buttonsStyling: false });
             return;
         }
-        $.post('../../api/default-notice-copies/save.php', { dataID: id, label: label, isActive: active }, function (res) {
+        $.post('../../api/default-notice-copies/save.php',
+               { dataID: id, label: label, isActive: active, context: $('#fld_context').val() }, function (res) {
             if (res && res.status == 1) {
                 editModal.hide();
                 Swal.fire({ icon: 'success', title: 'সংরক্ষিত', timer: 1200, showConfirmButton: false })
@@ -264,7 +325,7 @@ foreach ($rows as $r) if ((int)$r['isActive'] === 1) $activeCount++;
     });
 
     // Drag reorder
-    $('#defaultsBody').sortable({
+    $('.dnc-body').sortable({
         handle: '.drag-handle',
         axis: 'y',
         placeholder: 'dnc-drop-placeholder',
@@ -276,12 +337,13 @@ foreach ($rows as $r) if ((int)$r['isActive'] === 1) $activeCount++;
             return $helper;
         },
         update: function () {
-            var ids = $('#defaultsBody tr[data-id]').map(function () { return $(this).data('id'); }).get();
+            var $tb = $(this);
+            var ids = $tb.find('tr[data-id]').map(function () { return $(this).data('id'); }).get();
             $.post('../../api/default-notice-copies/reorder.php', { order: ids }, function (res) {
                 if (res && res.status == 1) {
                     // Re-number visual ক্রম column
                     var toBn = function (n) { return String(n).replace(/[0-9]/g, function (d) { return '০১২৩৪৫৬৭৮৯'[+d]; }); };
-                    $('#defaultsBody tr[data-id]').each(function (i) { $(this).find('.row-serial').text(toBn(i + 1)); });
+                    $tb.find('tr[data-id]').each(function (i) { $(this).find('.row-serial').text(toBn(i + 1)); });
                 }
             }, 'json');
         }
