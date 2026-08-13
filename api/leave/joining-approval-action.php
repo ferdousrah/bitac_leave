@@ -135,6 +135,30 @@ try {
             }
         }
 
+$segTypeChanges = [];
+    // The desk may have corrected the leave type on the already-approved
+    // segments (e.g. নৈমিত্তিক that should have been গড় বেতন). Only the type
+    // changes — dates and day counts stay as approved.
+    if (!empty($_POST['segLeaveType']) && is_array($_POST['segLeaveType'])) {
+        $validLT = [];
+        $ltq = mysqli_query($con, "SELECT leaveID FROM leave_types");
+        if ($ltq) while ($lr = mysqli_fetch_assoc($ltq)) $validLT[(int)$lr['leaveID']] = true;
+
+        $segUpd = mysqli_prepare($con,
+            "UPDATE leave_application_segments
+             SET leaveType = ?
+             WHERE dataID = ? AND applicationID = ? AND leaveType <> ?");
+        foreach ($_POST['segLeaveType'] as $segID => $newLT) {
+            $segID = (int)$segID;
+            $newLT = (int)$newLT;
+            if ($segID <= 0 || !isset($validLT[$newLT])) continue;
+            mysqli_stmt_bind_param($segUpd, 'iiii', $newLT, $segID, $leaveAppID, $newLT);
+            if (!mysqli_stmt_execute($segUpd)) throw new Exception('ছুটির ধরন হালনাগাদ ব্যর্থ');
+            if (mysqli_stmt_affected_rows($segUpd) > 0) $segTypeChanges[] = $segID . '=>' . $newLT;
+        }
+        mysqli_stmt_close($segUpd);
+    }
+
         // Mark this row approved (with signature)
         $upd = mysqli_prepare($con,
             "UPDATE leave_joining_data_for_approval
@@ -360,7 +384,8 @@ try {
                 'note'            => 'serial=' . $mySerial
                                    . '; type=' . $joiningType
                                    . '; joiningDate=' . ($joinIso ?? '?')
-                                   . ($isFinal ? '; applied_to_leave=' . $leaveAppID : ''),
+                                   . ($isFinal ? '; applied_to_leave=' . $leaveAppID : '')
+                                   . ($segTypeChanges ? '; segLeaveType ' . implode(',', $segTypeChanges) : ''),
             ]);
         }
 

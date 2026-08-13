@@ -118,6 +118,30 @@ try {
     }
     mysqli_stmt_close($updStmt);
 
+$segTypeChanges = [];
+    // The desk may have corrected the leave type on the already-approved
+    // segments (e.g. নৈমিত্তিক that should have been গড় বেতন). Only the type
+    // changes — dates and day counts stay as approved.
+    if (!empty($_POST['segLeaveType']) && is_array($_POST['segLeaveType'])) {
+        $validLT = [];
+        $ltq = mysqli_query($con, "SELECT leaveID FROM leave_types");
+        if ($ltq) while ($lr = mysqli_fetch_assoc($ltq)) $validLT[(int)$lr['leaveID']] = true;
+
+        $segUpd = mysqli_prepare($con,
+            "UPDATE leave_application_segments
+             SET leaveType = ?
+             WHERE dataID = ? AND applicationID = ? AND leaveType <> ?");
+        foreach ($_POST['segLeaveType'] as $segID => $newLT) {
+            $segID = (int)$segID;
+            $newLT = (int)$newLT;
+            if ($segID <= 0 || !isset($validLT[$newLT])) continue;
+            mysqli_stmt_bind_param($segUpd, 'iiii', $newLT, $segID, $leaveAppID, $newLT);
+            if (!mysqli_stmt_execute($segUpd)) throw new Exception('ছুটির ধরন হালনাগাদ ব্যর্থ');
+            if (mysqli_stmt_affected_rows($segUpd) > 0) $segTypeChanges[] = $segID . '=>' . $newLT;
+        }
+        mysqli_stmt_close($segUpd);
+    }
+
     // The নোট উপস্থাপনকারী may have re-ordered or replaced the pending desks.
     // Applied before the forward flag below so the new rows pick it up too.
     $chainEdit = ['changed' => false];
@@ -170,7 +194,7 @@ try {
             'target_type'     => 'leave_joining',
             'target_id'       => $joiningID,
             'organization_id' => $appOrgID ?: null,
-            'note'            => 'type=' . $joiningType
+            'note'            => ($segTypeChanges ? 'segLeaveType ' . implode(',', $segTypeChanges) . '; ' : '') . 'type=' . $joiningType
                                . '; joiningDate=' . $joiningDate
                                . ($joiningType === 3 ? '; extLT=' . $extLeaveType : '')
                                . (!empty($chainEdit['changed'])

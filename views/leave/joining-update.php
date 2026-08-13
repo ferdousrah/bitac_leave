@@ -282,7 +282,20 @@ $meta = $typeMeta[$joiningType];
             <?php $origTotal = 0; foreach ($origSegs as $i => $sg): $origTotal += (int)$sg['days']; ?>
                 <tr>
                     <td><strong><?= be_num($i + 1) ?></strong></td>
-                    <td><?= htmlspecialchars($sg['leaveTitle'] ?? '—') ?></td>
+                    <td>
+                        <?php if (!empty($sg['dataID'])): ?>
+                            <select class="form-select form-select-sm" form="joiningUpdateForm"
+                                    name="segLeaveType[<?= (int)$sg['dataID'] ?>]">
+                                <?php foreach ($leaveTypes as $lt): ?>
+                                    <option value="<?= (int)$lt['leaveID'] ?>" <?= ((int)$lt['leaveID'] === (int)$sg['leaveType']) ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($lt['leaveTitle']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        <?php else: ?>
+                            <?= htmlspecialchars($sg['leaveTitle'] ?? '—') ?>
+                        <?php endif; ?>
+                    </td>
                     <td><?= be_num(date('d/m/Y', strtotime($sg['dateFrom']))) ?></td>
                     <td><?= be_num(date('d/m/Y', strtotime($sg['dateTo']))) ?></td>
                     <td class="text-end"><strong><?= be_num($sg['days']) ?></strong></td>

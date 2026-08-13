@@ -280,7 +280,20 @@ $approvedDateTo   = $leaveApp['approvedDateTo']   ?: $leaveApp['dateTo'];
             <?php $origTotal = 0; foreach ($origSegs as $i => $sg): $origTotal += (int)$sg['days']; ?>
                 <tr>
                     <td><strong><?= be_num($i + 1) ?></strong></td>
-                    <td><?= htmlspecialchars($sg['leaveTitle'] ?? '—') ?></td>
+                    <?php $_segEditable = $canAct && in_array($joiningType, [2, 3], true) && !empty($sg['dataID']); ?>
+                    <td>
+                        <?php if ($_segEditable): ?>
+                            <select class="form-select form-select-sm seg-lt" data-seg="<?= (int)$sg['dataID'] ?>">
+                                <?php foreach ($leaveTypes as $lt): ?>
+                                    <option value="<?= (int)$lt['leaveID'] ?>" <?= ((int)$lt['leaveID'] === (int)$sg['leaveType']) ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($lt['leaveTitle']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        <?php else: ?>
+                            <?= htmlspecialchars($sg['leaveTitle'] ?? '—') ?>
+                        <?php endif; ?>
+                    </td>
                     <td><?= be_num(date('d/m/Y', strtotime($sg['dateFrom']))) ?></td>
                     <td><?= be_num(date('d/m/Y', strtotime($sg['dateTo']))) ?></td>
                     <td class="text-end"><strong><?= be_num($sg['days']) ?></strong></td>
@@ -566,6 +579,10 @@ $approvedDateTo   = $leaveApp['approvedDateTo']   ?: $leaveApp['dateTo'];
                 joiningDate: displayToIso($('#joiningDate').val() || '')
             };
             if (joiningType === 3) p.extensionLeaveType = $('#extensionLeaveType').val() || '';
+            // Leave types the desk may have corrected on the approved segments
+            $('.seg-lt').each(function () {
+                p['segLeaveType[' + $(this).data('seg') + ']'] = $(this).val();
+            });
             if (reason !== undefined) p.reason = reason;
             return p;
         }
