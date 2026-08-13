@@ -15,6 +15,50 @@ $action = $_GET['action'] ?? 'view';
 $employeeID = isset($_GET['employeeID']) ? (int)$_GET['employeeID'] : 0;
 $year = isset($_GET['year']) ? (int)$_GET['year'] : 0;
 
+
+// ── Access guard ──────────────────────────────────────────────────────
+// employeeID comes straight off the query string, so without this anyone could
+// read any employee's certificate by editing the URL. Same rule the generate
+// endpoint applies: Super Admin and HQ see every centre, everyone else only
+// their own.
+session_start();
+require_once(__DIR__ . '/../../../connection.php');
+
+if (empty($_SESSION['username'])) {
+    header('Location: ' . BASE_URL . '/index.php');
+    exit;
+}
+
+$_gStmt = mysqli_prepare($con,
+    "SELECT ul.user_group_id, el.organization_id AS emp_org
+     FROM user_list ul
+     LEFT JOIN employee_list el ON ul.employee_id = el.id
+     WHERE ul.user_id = ? LIMIT 1");
+$_gun = $_SESSION['username'];
+mysqli_stmt_bind_param($_gStmt, 's', $_gun);
+mysqli_stmt_execute($_gStmt);
+$_gActor = mysqli_fetch_assoc(mysqli_stmt_get_result($_gStmt)) ?: [];
+mysqli_stmt_close($_gStmt);
+
+$_gSuperAdmin = ((int)($_gActor['user_group_id'] ?? 0) === 1);
+$_gCenterID   = (int)($_gActor['emp_org'] ?? 0);
+
+// Skip while the id is missing — the parameter check below owns that message.
+if ($employeeID > 0 && !$_gSuperAdmin && $_gCenterID !== 4) {
+    $_gChk = mysqli_prepare($con,
+        "SELECT 1 FROM employee_list WHERE id = ? AND organization_id = ? LIMIT 1");
+    mysqli_stmt_bind_param($_gChk, 'ii', $employeeID, $_gCenterID);
+    mysqli_stmt_execute($_gChk);
+    $_gAllowed = (bool)mysqli_fetch_row(mysqli_stmt_get_result($_gChk));
+    mysqli_stmt_close($_gChk);
+    if (!$_gAllowed) {
+        echo '<div style="font-family:sans-serif;padding:40px;text-align:center;color:#b13c3c;">'
+           . 'এই কর্মচারীর ছুটির সনদ দেখার অনুমতি আপনার নেই — তিনি আপনার কেন্দ্রের কর্মী নন।'
+           . '</div>';
+        exit;
+    }
+}
+
 if ($employeeID <= 0 || $year <= 0) {
     ?>
     <!DOCTYPE html>

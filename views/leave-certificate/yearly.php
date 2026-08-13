@@ -3,10 +3,29 @@ require_once(__DIR__ . '/../../includes/header_vuexy.php');
 
 $incrementYear = date('Y');
 
+// Actor scope — Super Admin + HQ (org=4) see all centers; others restricted to
+// own center, same rule the certificate generate page already applies.
+$_actorStmt = mysqli_prepare($con,
+    "SELECT ul.user_group_id, el.organization_id AS emp_org
+     FROM user_list ul
+     LEFT JOIN employee_list el ON ul.employee_id = el.id
+     WHERE ul.user_id = ? LIMIT 1");
+$_un = $_SESSION['username'] ?? '';
+mysqli_stmt_bind_param($_actorStmt, 's', $_un);
+mysqli_stmt_execute($_actorStmt);
+$_actor = mysqli_fetch_assoc(mysqli_stmt_get_result($_actorStmt)) ?: [];
+mysqli_stmt_close($_actorStmt);
+$_isSuperAdmin  = ((int)($_actor['user_group_id'] ?? 0) === 1);
+$_myCenterID    = (int)($_actor['emp_org'] ?? 0);
+$_seeAllCenters = ($_isSuperAdmin || $_myCenterID === 4);
+$_orgScopeEL    = $_seeAllCenters ? '' : ' AND employee_list.organization_id = ' . $_myCenterID;
+
 $getAllEmployeeListQ = mysqli_query($con, "SELECT employee_list.*, job_title.job_title_name
     FROM employee_list
     INNER JOIN job_title ON employee_list.designation = job_title.id
-    WHERE employment_status=1 OR employment_status=2
+    WHERE (employment_status=1 OR employment_status=2)
+      AND employee_list.pending_section_assignment = 0
+      $_orgScopeEL
     ORDER BY employee_id ASC");
 
 function Bengali_DTN($NRS){
