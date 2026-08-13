@@ -430,7 +430,7 @@ $meta = $typeMeta[$joiningType];
     var approvedTo   = "<?= htmlspecialchars($approvedDateTo) ?>";
     var initialJoiningIso = "<?= htmlspecialchars($lja['requestedJoiningDate'] ?? '') ?>";
     var origSegs = <?= json_encode(array_map(function($s) {
-        return ['leaveType' => (int)$s['leaveType'], 'leaveTitle' => $s['leaveTitle'] ?? '', 'dateFrom' => $s['dateFrom'], 'dateTo' => $s['dateTo'], 'days' => (int)$s['days']];
+        return ['segID' => (int)($s['dataID'] ?? 0), 'leaveType' => (int)$s['leaveType'], 'leaveTitle' => $s['leaveTitle'] ?? '', 'dateFrom' => $s['dateFrom'], 'dateTo' => $s['dateTo'], 'days' => (int)$s['days']];
     }, $origSegs), JSON_UNESCAPED_UNICODE) ?>;
     var leaveTypeMap = <?= json_encode($leaveTypeMap, JSON_UNESCAPED_UNICODE) ?>;
 
@@ -476,6 +476,19 @@ $meta = $typeMeta[$joiningType];
         });
 
         $('#extensionLeaveType').on('change', function() { renderPreview($('#joiningDate').val()); });
+
+        // Keep the preview honest when a desk corrects an approved segment's type.
+        $('select[name^="segLeaveType"]').on('change', function () {
+            var segID = parseInt($(this).attr('name').replace(/\D+/g, ''), 10);
+            var newLT = parseInt($(this).val(), 10);
+            origSegs.forEach(function (sg) {
+                if (sg.segID === segID) {
+                    sg.leaveType  = newLT;
+                    sg.leaveTitle = leaveTypeMap[newLT] || ('Type ' + newLT);
+                }
+            });
+            renderPreview($('#joiningDate').val());
+        });
 
         function renderPreview(joiningDateDisp) {
             var $body = $('#previewBody'), $diff = $('#previewDiff');

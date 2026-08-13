@@ -460,7 +460,7 @@ $approvedDateTo   = $leaveApp['approvedDateTo']   ?: $leaveApp['dateTo'];
     var approvedFrom  = "<?= htmlspecialchars($approvedDateFrom) ?>";
     var approvedTo    = "<?= htmlspecialchars($approvedDateTo) ?>";
     var origSegs      = <?= json_encode(array_map(function($s) {
-        return ['leaveType' => (int)$s['leaveType'], 'leaveTitle' => $s['leaveTitle'] ?? '', 'dateFrom' => $s['dateFrom'], 'dateTo' => $s['dateTo'], 'days' => (int)$s['days']];
+        return ['segID' => (int)($s['dataID'] ?? 0), 'leaveType' => (int)$s['leaveType'], 'leaveTitle' => $s['leaveTitle'] ?? '', 'dateFrom' => $s['dateFrom'], 'dateTo' => $s['dateTo'], 'days' => (int)$s['days']];
     }, $origSegs), JSON_UNESCAPED_UNICODE) ?>;
     var leaveTypeMap  = <?= json_encode($leaveTypeMap, JSON_UNESCAPED_UNICODE) ?>;
     var canAct        = <?= $canAct ? 'true' : 'false' ?>;
@@ -495,6 +495,20 @@ $approvedDateTo   = $leaveApp['approvedDateTo']   ?: $leaveApp['dateTo'];
                 onChange: renderPreview
             });
             $('#extensionLeaveType').on('change', renderPreview);
+
+            // A corrected type on an approved segment has to reach the preview,
+            // otherwise the table below keeps showing the type it replaced.
+            $('.seg-lt').on('change', function () {
+                var segID = parseInt($(this).data('seg'), 10);
+                var newLT = parseInt($(this).val(), 10);
+                origSegs.forEach(function (s) {
+                    if (s.segID === segID) {
+                        s.leaveType  = newLT;
+                        s.leaveTitle = leaveTypeMap[newLT] || ('Type ' + newLT);
+                    }
+                });
+                renderPreview();
+            });
         }
 
         function renderPreview() {
