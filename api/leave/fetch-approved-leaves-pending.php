@@ -93,6 +93,16 @@ while ($empRow = mysqli_fetch_array($dataResult)) {
         // counts the gaps between segments as leave.
         $__aid = intval($empRow['leaveApplicationID']);
         $__segs = [];
+        // Frozen snapshot taken at final approval. Applications approved before
+        // it existed have none, so fall back to the live proposed rows.
+        $__apprSegs = [];
+        $__apprRes = mysqli_query($con, "SELECT s.dateFrom, s.dateTo, s.days, s.serial, lt.leaveTitle
+                                          FROM leave_application_segments s
+                                          LEFT JOIN leave_types lt ON s.leaveType = lt.leaveID
+                                          WHERE s.applicationID = $__aid AND s.kind = 'approved'
+                                          ORDER BY s.serial ASC, s.dataID ASC");
+        if ($__apprRes) while ($__ar = mysqli_fetch_assoc($__apprRes)) $__apprSegs[] = $__ar;
+
         $__segRes = mysqli_query($con, "SELECT s.dateFrom, s.dateTo, s.days, s.serial, lt.leaveTitle
                                          FROM leave_application_segments s
                                          LEFT JOIN leave_types lt ON s.leaveType = lt.leaveID
@@ -249,25 +259,55 @@ while ($empRow = mysqli_fetch_array($dataResult)) {
         // Multi-segment breakdown for the primary (approved) leave — same
         // seg-list convention as the other approval queues.
         // Primary leave (date + days + type chip)
-        $primaryHtml = '<div class="date-range"><i class="ti tabler-calendar-check"></i><span>' . banglaNumber(date_format($adateF, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($adateT, "d/m/Y")) . '</span></div>';
-        if (count($__segs) > 1) {
-            $__segTotal = array_sum(array_column($__segs, 'days'));
-            // Date-stamp the chips when the segments have gaps between them —
-            // otherwise the range above reads as far more days than the total.
-            $__segGapped = !joining_segments_contiguous($__segs);
-            $__segParts = [];
-            foreach ($__segs as $__sg) {
-                $__segParts[] = '<span class="seg-pill">'
-                              . ($__segGapped ? joining_segment_dates($__sg) . ' · ' : '')
-                              . banglaNumber((int)$__sg['days']) . ' দিন '
-                              . htmlspecialchars($__sg['leaveTitle'] ?? 'অজানা') . '</span>';
+        // Draw a segment list the same way for both the frozen approval and the
+        // desks' current proposal, so the two columns are directly comparable.
+        $__segList = function (array $segs) {
+            $total  = array_sum(array_column($segs, 'days'));
+            $gapped = !joining_segments_contiguous($segs);
+            $parts  = [];
+            foreach ($segs as $sg) {
+                $parts[] = '<span class="seg-pill">'
+                         . ($gapped ? joining_segment_dates($sg) . ' · ' : '')
+                         . banglaNumber((int)$sg['days']) . ' দিন '
+                         . htmlspecialchars($sg['leaveTitle'] ?? 'অজানা') . '</span>';
             }
+            return ['total' => $total, 'html' => '<div class="seg-list">' . implode(' ', $parts) . '</div>'];
+        };
+
+        // প্রাথমিক অনুমোদিত reads the frozen snapshot; the proposed rows keep
+        // changing as desks edit, and following those would erase the record of
+        // what was actually granted.
+        $__primarySegs = $__apprSegs ?: $__segs;
+
+        $primaryHtml = '<div class="date-range"><i class="ti tabler-calendar-check"></i><span>' . banglaNumber(date_format($adateF, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($adateT, "d/m/Y")) . '</span></div>';
+        if (count($__primarySegs) > 1) {
+            $__pl = $__segList($__primarySegs);
+            $__segTotal = $__pl['total'];
             $primaryHtml .= '<div class="leave-meta"><span class="days-pill days-pill-success">মোট ' . banglaNumber($__segTotal) . ' দিন</span></div>'
-                          . '<div class="seg-list">' . implode(' ', $__segParts) . '</div>';
+                          . $__pl['html'];
         } else {
             $primaryHtml .= '<div class="leave-meta"><span class="days-pill days-pill-success">' . banglaNumber($adateDiff) . ' দিন</span>'
                           . ($leaveTypeText ? ' <span class="leave-type-chip">' . htmlspecialchars($leaveTypeText) . '</span>' : '')
                           . '</div>';
+        }
+
+        // প্রস্তাবিত — only worth a column when the desks have actually changed
+        // something; otherwise it would just repeat প্রাথমিক অনুমোদিত on every row.
+        $__proposedChanged = false;
+        if ($__apprSegs && count($__apprSegs) === count($__segs)) {
+            foreach ($__segs as $__i => $__sg) {
+                if (($__sg['leaveTitle'] ?? '') !== ($__apprSegs[$__i]['leaveTitle'] ?? '')
+                    || (int)$__sg['days'] !== (int)$__apprSegs[$__i]['days']) { $__proposedChanged = true; break; }
+            }
+        } elseif ($__apprSegs) {
+            $__proposedChanged = true;
+        }
+
+        $proposedHtml = '<span class="text-muted small">—</span>';
+        if ($__proposedChanged && $__segs) {
+            $__prop = $__segList($__segs);
+            $proposedHtml = '<div class="leave-meta"><span class="days-pill days-pill-warning">মোট '
+                          . banglaNumber($__prop['total']) . ' দিন</span></div>' . $__prop['html'];
         }
 
         // Spent leave
@@ -304,6 +344,7 @@ while ($empRow = mysqli_fetch_array($dataResult)) {
             'section' => $secCenter,
             'application_type' => $applicationTypeHtml,
             'primary_approved_leave' => $primaryHtml,
+            'proposed_leave' => $proposedHtml,
             'leave_spent' => $spentHtml,
             'corrected_leave' => $correctedHtml,
             'status' => $statusBadge,

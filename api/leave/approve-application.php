@@ -204,6 +204,32 @@ if ($isLastSignatory) {
         $leaveApplicationID);
     mysqli_stmt_execute($finalStmt);
 
+    // kind is an ENUM; 'approved' has to exist before the snapshot can be
+    // written, otherwise the rows land with an empty kind and vanish from every
+    // query. Widening an ENUM keeps existing values untouched.
+    $__kindCol = mysqli_query($con, "SHOW COLUMNS FROM leave_application_segments LIKE 'kind'");
+    $__kindDef = $__kindCol ? (mysqli_fetch_assoc($__kindCol)['Type'] ?? '') : '';
+    if ($__kindDef !== '' && strpos($__kindDef, "'approved'") === false) {
+        mysqli_query($con, "ALTER TABLE leave_application_segments
+            MODIFY COLUMN kind ENUM('requested','proposed','approved') NOT NULL DEFAULT 'requested'");
+    }
+
+    // Freeze what was approved. The 'proposed' rows stay editable afterwards —
+    // a joining desk may correct a leave type months later — so without a copy
+    // taken here there is nothing left on record showing what the signatories
+    // actually granted, and প্রাথমিক অনুমোদিত would silently follow the edits.
+    mysqli_query($con, "DELETE FROM leave_application_segments
+                        WHERE applicationID = " . (int)$leaveApplicationID . " AND kind = 'approved'");
+    mysqli_query($con, "INSERT INTO leave_application_segments
+                          (applicationID, kind, leaveType, leaveTypeInTwo, dateFrom, dateTo,
+                           days, approvedDays, serial, createdBy, createdAt)
+                        SELECT applicationID, 'approved', leaveType, leaveTypeInTwo, dateFrom, dateTo,
+                               days, approvedDays, serial, " . (int)$currentEmployeeID . ", NOW()
+                        FROM leave_application_segments
+                        WHERE applicationID = " . (int)$leaveApplicationID . "
+                          AND (kind = 'proposed' OR kind IS NULL)
+                        ORDER BY serial ASC, dataID ASC");
+
     // Notify copy-to employees
     $copyStmt = mysqli_prepare($con,
         "SELECT employeeID FROM leave_notice_copy WHERE applicationID=? ORDER BY serial ASC");
