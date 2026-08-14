@@ -136,35 +136,16 @@ while ($empRow = mysqli_fetch_array($dataResult)) {
             $correctionJoiningDate = date_create($empRow['approvedDateTo']);
             $correctedLeaveSpent = dateDiffInDays($empRow['approvedDateFrom'], $empRow['approvedDateTo']) + 1;
 
-            $correctedLeaveTypeText = '';
-            if ($empRow['approvedLeaveType'] == 1) {
-                $correctedLeaveTypeText = "গড় বেতন";
-            } else if ($empRow['approvedLeaveType'] == 2) {
-                $correctedLeaveTypeText = "অর্ধ-গড় বেতন";
-            } else if ($empRow['approvedLeaveType'] == 3) {
-                $correctedLeaveTypeText = "নৈমিত্তিক (Casual Leave)";
-            } else if ($empRow['approvedLeaveType'] == 4) {
-                $correctedLeaveTypeText = "অসাধারণ(বিনা বেতনে ছুটি)";
-            } else if ($empRow['approvedLeaveType'] == 5) {
-                $correctedLeaveTypeText = "ঐচ্ছিক (Optional Leave)";
-            }
+            $correctedLeaveTypeText = joining_leave_titles($con)[(int)$empRow['approvedLeaveType']] ?? '';
 
             $correctedLeaveHtml = banglaNumber(date_format($leaveSpentDateFrom, "d/m/Y")) . ' হইতে ' . banglaNumber(date_format($correctionJoiningDate, "d/m/Y")) . ', ' . banglaNumber($correctedLeaveSpent) . ' দিন ' . htmlspecialchars($correctedLeaveTypeText);
         }
 
-        // Determine leave type text
-        $leaveTypeText = '';
-        if ($empRow['primaryApprovedLeaveType'] == 1) {
-            $leaveTypeText = "গড় বেতন";
-        } else if ($empRow['primaryApprovedLeaveType'] == 2) {
-            $leaveTypeText = "অর্ধ-গড় বেতন";
-        } else if ($empRow['primaryApprovedLeaveType'] == 3) {
-            $leaveTypeText = "নৈমিত্তিক (Casual Leave)";
-        } else if ($empRow['primaryApprovedLeaveType'] == 4) {
-            $leaveTypeText = "অসাধারণ(বিনা বেতনে ছুটি)";
-        } else if ($empRow['primaryApprovedLeaveType'] == 5) {
-            $leaveTypeText = "ঐচ্ছিক (Optional Leave)";
-        }
+        // Leave type name straight from leave_types. The hand-written list this
+        // replaces only knew ids 1-5, while real ids run to 8, 18, 19, 21, 22 —
+        // so anything outside that range rendered with no type at all.
+        $__ltMap = joining_leave_titles($con);
+        $leaveTypeText = $__ltMap[(int)$empRow['primaryApprovedLeaveType']] ?? '';
 
         // Application type
         $applicationType = '';
