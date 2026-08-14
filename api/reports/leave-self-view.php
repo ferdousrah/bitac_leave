@@ -1,6 +1,17 @@
 <?php
+
+
+
 require_once(__DIR__ . '/../../config/connection.php');
 require_once(LIBRARY_PATH . '/number_converter.php');
+
+// Leave type names come from leave_types. The hand-written chains this replaces
+// knew only a handful of ids and mislabelled some of those, and $approvedLType
+// was never reset per row, so an unmatched id printed the previous row's type.
+$__ltMapReport = [];
+$__ltQR = mysqli_query($con, "SELECT leaveID, leaveTitle FROM leave_types");
+if ($__ltQR) while ($__ltR = mysqli_fetch_assoc($__ltQR)) $__ltMapReport[(int)$__ltR['leaveID']] = $__ltR['leaveTitle'];
+
 include_once('function.php');
 
 function ShowBangladeshDate()
@@ -581,31 +592,10 @@ $getLeaveDeductionQ = mysqli_query($con, "select * from leave_deduction_history 
 
 
 
-									if($lrow['leaveTypeInTwo'] == 1){
-								
-									$approvedLType = "গড় বেতন";
-								
-									}else if($lrow['leaveTypeInTwo'] == 2){
-									
-										$approvedLType = "অর্ধ-গড় বেতন";
-
-										$dateDiff = $dateDiff*2;
-									
-									}else if($lrow['leaveTypeInTwo'] == 3){
-									
-										$approvedLType = "নৈমিত্তিক (Casual Leave)";
-									
-									}else if($lrow['leaveTypeInTwo'] == 4){
-									
-										$approvedLType = "অসাধারণ(বিনা বেতনে ছুটি)";
-									
-									}else if($lrow['leaveTypeInTwo'] == 5){
-									
-										$approvedLType = "ঐচ্ছিক (Optional Leave)";
-									
-									}
-
-								?>
+									$approvedLType = $__ltMapReport[(int)$lrow['leaveTypeInTwo']] ?? '';
+									// অর্ধ-গড় বেতন (id 2) consumes two days of balance per day taken.
+									if ((int)$lrow['leaveTypeInTwo'] === 2) $dateDiff = $dateDiff * 2;
+									?>
 
 								<tr height="30">
 								<td style="text-align: center;"><?php echo $obj->engToBn($sl); ?></td>
