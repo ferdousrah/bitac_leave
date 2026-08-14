@@ -168,3 +168,59 @@ function joining_segments_span(array $segs)
 }
 
 }
+
+if (!function_exists('joining_submitted_snapshot')) {
+
+/**
+ * The joining letter is the applicant's own document — it must keep saying what
+ * they submitted and signed. Desks may afterwards correct the approved leave
+ * types or the extension type, and those edits land in the live segment rows and
+ * extensionSegmentsJson, which the letters used to render from; a letter would
+ * then retroactively claim wording its author never wrote.
+ *
+ * So submission freezes a copy here. Decisions still flow through the live data
+ * into the preview, the spent-leave figures, the finalize and the office order.
+ */
+function joining_snapshot_column($con)
+{
+    static $exists = null;
+    if ($exists !== null) return $exists;
+    $chk = mysqli_query($con, "SHOW COLUMNS FROM leave_joining_application LIKE 'submittedSnapshotJson'");
+    $exists = ($chk && mysqli_num_rows($chk) > 0);
+    return $exists;
+}
+
+/** Creates the column if it isn't there yet. Safe to call repeatedly. */
+function joining_ensure_snapshot_column($con)
+{
+    if (joining_snapshot_column($con)) return true;
+    $ok = mysqli_query($con, "ALTER TABLE leave_joining_application
+        ADD COLUMN submittedSnapshotJson MEDIUMTEXT NULL AFTER extensionSegmentsJson");
+    if ($ok) {
+        // Refresh the cached answer for the rest of this request.
+        $chk = mysqli_query($con, "SHOW COLUMNS FROM leave_joining_application LIKE 'submittedSnapshotJson'");
+        return ($chk && mysqli_num_rows($chk) > 0);
+    }
+    return false;
+}
+
+/**
+ * @return array{approvedSegments: array, extensionSegments: array}|null
+ *         null when the letter predates the snapshot — callers fall back to the
+ *         live rows, which is how those letters have always rendered.
+ */
+function joining_read_snapshot($con, $joiningID)
+{
+    if (!joining_snapshot_column($con)) return null;
+    $row = mysqli_fetch_assoc(mysqli_query($con,
+        "SELECT submittedSnapshotJson FROM leave_joining_application WHERE dataID = " . (int)$joiningID . " LIMIT 1"));
+    if (empty($row['submittedSnapshotJson'])) return null;
+    $snap = json_decode($row['submittedSnapshotJson'], true);
+    if (!is_array($snap) || empty($snap['approvedSegments'])) return null;
+    return [
+        'approvedSegments'  => $snap['approvedSegments'],
+        'extensionSegments' => $snap['extensionSegments'] ?? [],
+    ];
+}
+
+}

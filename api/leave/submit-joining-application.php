@@ -7,6 +7,7 @@ require_once(__DIR__ . '/../../connection.php');
 require_once(__DIR__ . '/../../bddate.php');
 require_once(__DIR__ . '/../../includes/signatory_route_helper.php');
 require_once(__DIR__ . '/../../library/number_converter.php');
+require_once(__DIR__ . '/../../includes/joining-effective-leave.php');
 ob_end_clean();
 
 function out($status, $message, $extra = []) {
@@ -236,6 +237,59 @@ try {
     }
     $joiningID = mysqli_insert_id($con);
     mysqli_stmt_close($insStmt);
+
+    // 1b. Freeze what the applicant is submitting. Their letter renders from
+    // this and nothing else, so a desk correcting a leave type later cannot
+    // rewrite a document the applicant already signed. Titles are stored too,
+    // so renaming a leave type afterwards can't alter the wording either.
+    if (joining_ensure_snapshot_column($con)) {
+        $snapSegs = [];
+        $snapQ = mysqli_query($con,
+            "SELECT s.leaveType, s.dateFrom, s.dateTo, s.days, lt.leaveTitle
+             FROM leave_application_segments s
+             LEFT JOIN leave_types lt ON lt.leaveID = s.leaveType
+             WHERE s.applicationID = " . (int)$leaveApplicationID . "
+               AND (s.kind = 'proposed' OR s.kind IS NULL)
+             ORDER BY s.serial ASC, s.dataID ASC");
+        if ($snapQ) {
+            while ($sr = mysqli_fetch_assoc($snapQ)) {
+                $snapSegs[] = [
+                    'leaveType'  => (int)$sr['leaveType'],
+                    'leaveTitle' => $sr['leaveTitle'] ?? '',
+                    'dateFrom'   => $sr['dateFrom'],
+                    'dateTo'     => $sr['dateTo'],
+                    'days'       => (int)$sr['days'],
+                ];
+            }
+        }
+
+        $snapExt = [];
+        if ($extensionSegmentsJson) {
+            $decodedExt = json_decode($extensionSegmentsJson, true);
+            if (is_array($decodedExt)) {
+                $titles = joining_leave_titles($con);
+                foreach ($decodedExt as $es) {
+                    $lt = (int)($es['leaveType'] ?? 0);
+                    $snapExt[] = [
+                        'leaveType'  => $lt,
+                        'leaveTitle' => $titles[$lt] ?? '',
+                        'dateFrom'   => $es['dateFrom'] ?? '',
+                        'dateTo'     => $es['dateTo'] ?? '',
+                        'days'       => (int)($es['days'] ?? 0),
+                    ];
+                }
+            }
+        }
+
+        $snapJson = json_encode(
+            ['approvedSegments' => $snapSegs, 'extensionSegments' => $snapExt],
+            JSON_UNESCAPED_UNICODE);
+        $snapStmt = mysqli_prepare($con,
+            "UPDATE leave_joining_application SET submittedSnapshotJson = ? WHERE dataID = ?");
+        mysqli_stmt_bind_param($snapStmt, 'si', $snapJson, $joiningID);
+        mysqli_stmt_execute($snapStmt);
+        mysqli_stmt_close($snapStmt);
+    }
 
     // 2. Save applicant signature blob (if any)
     if ($appSig !== null) {

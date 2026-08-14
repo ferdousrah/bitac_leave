@@ -148,13 +148,19 @@ function generatePDFData($leaveApplicationID) {
 
         // Day counts come from the approved segments, not the calendar span —
         // a leave with gaps between its segments covers more dates than it grants.
-        $segRows = [];
-        $segRes = mysqli_query($con, "SELECT dateFrom, dateTo, days
-                                      FROM leave_application_segments
-                                      WHERE applicationID = " . (int)$leaveApplicationID . "
-                                        AND (kind = 'proposed' OR kind IS NULL)
-                                      ORDER BY serial ASC, dataID ASC");
-        if ($segRes) while ($segRow = mysqli_fetch_assoc($segRes)) $segRows[] = $segRow;
+        // Frozen at submission — this is the applicant's own letter, so a desk
+        // correcting a leave type afterwards must not rewrite its wording.
+        // Letters submitted before the snapshot existed fall back to live rows.
+        $__snap = joining_read_snapshot($con, (int)$joiningData['dataID']);
+        $segRows = $__snap ? $__snap['approvedSegments'] : [];
+        if (!$__snap) {
+            $segRes = mysqli_query($con, "SELECT dateFrom, dateTo, days
+                                          FROM leave_application_segments
+                                          WHERE applicationID = " . (int)$leaveApplicationID . "
+                                            AND (kind = 'proposed' OR kind IS NULL)
+                                          ORDER BY serial ASC, dataID ASC");
+            if ($segRes) while ($segRow = mysqli_fetch_assoc($segRes)) $segRows[] = $segRow;
+        }
         $segApprovedDays = array_sum(array_column($segRows, 'days'));
         $dateDiff = $segApprovedDays > 0
             ? (int)$segApprovedDays
@@ -162,8 +168,13 @@ function generatePDFData($leaveApplicationID) {
 
         // Requested total — the approved segments plus the extension being asked
         // for, projected the same way the joining approval will apply it.
+        // The extension the applicant asked for, not whatever a desk has since
+        // set — extensionSegmentsJson is overwritten when they change the type.
+        $__extJsonForLetter = ($__snap && !empty($__snap['extensionSegments']))
+            ? json_encode($__snap['extensionSegments'], JSON_UNESCAPED_UNICODE)
+            : ($joiningData['extensionSegmentsJson'] ?? null);
         $totalSegs = joining_effective_segments($segRows, 3, $joiningData['requestedJoiningDate'], [
-            'extensionSegmentsJson' => $joiningData['extensionSegmentsJson'] ?? null,
+            'extensionSegmentsJson' => $__extJsonForLetter,
             'approvedDateTo'        => $leaveData['approvedDateTo'] ?? '',
             'extLeaveType'          => $joiningData['approvedLeaveType'] ?? 0,
             'leaveTitles'           => joining_leave_titles($con),
