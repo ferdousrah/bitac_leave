@@ -281,13 +281,31 @@ while ($empRow = mysqli_fetch_array($dataResult)) {
         // প্রস্তাবিত — only worth a column when the desks have actually changed
         // something; otherwise it would just repeat প্রাথমিক অনুমোদিত on every row.
         $__proposedChanged = false;
-        if ($__apprSegs && count($__apprSegs) === count($__segs)) {
-            foreach ($__segs as $__i => $__sg) {
-                if (($__sg['leaveTitle'] ?? '') !== ($__apprSegs[$__i]['leaveTitle'] ?? '')
-                    || (int)$__sg['days'] !== (int)$__apprSegs[$__i]['days']) { $__proposedChanged = true; break; }
+        if ($__apprSegs) {
+            // Snapshot available — compare segment for segment.
+            if (count($__apprSegs) !== count($__segs)) {
+                $__proposedChanged = true;
+            } else {
+                foreach ($__segs as $__i => $__sg) {
+                    if (($__sg['leaveTitle'] ?? '') !== ($__apprSegs[$__i]['leaveTitle'] ?? '')
+                        || (int)$__sg['days'] !== (int)$__apprSegs[$__i]['days']) { $__proposedChanged = true; break; }
+                }
             }
-        } elseif ($__apprSegs) {
-            $__proposedChanged = true;
+        } elseif ($__segs && !empty($empRow['primaryApprovedLeaveType'])) {
+            // No snapshot (approved before it existed), but leave_applications
+            // still froze the primary type and day count — enough to tell that a
+            // desk has changed something. Compared loosely, because the same
+            // leave may legitimately be split across several segments.
+            $__primaryTitle = $__ltMap[(int)$empRow['primaryApprovedLeaveType']] ?? '';
+            $__primaryDays  = (int)($empRow['primaryApprovedLeaveDays'] ?: $adateDiff);
+            $__propDays     = array_sum(array_column($__segs, 'days'));
+            if ($__propDays !== $__primaryDays) {
+                $__proposedChanged = true;
+            } else {
+                foreach ($__segs as $__sg) {
+                    if (($__sg['leaveTitle'] ?? '') !== $__primaryTitle) { $__proposedChanged = true; break; }
+                }
+            }
         }
 
         $proposedHtml = '<span class="text-muted small">—</span>';

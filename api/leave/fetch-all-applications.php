@@ -116,6 +116,7 @@ SELECT
     la.primaryLeaveDateFrom     AS primaryLeaveDateFrom,
     la.primaryLeaveDateTo       AS primaryLeaveDateTo,
     la.primaryApprovedLeaveType AS primaryApprovedLeaveType,
+    la.primaryApprovedLeaveDays AS primaryApprovedLeaveDays,
     la.applicationType          AS applicationType,
     la.approvedDateTo           AS approvedDateTo,
     la.cancellationReasion      AS cancellationReasion,
@@ -302,17 +303,36 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
     // প্রস্তাবিত — what the joining desks now propose, shown only when it differs
     // from the frozen approval; otherwise it would just repeat the column beside it.
     $proposed_leave = '';
-    if ($row['status'] == 1 && $_snapSegs && $_apprSegs) {
-        $_changed = (count($_snapSegs) !== count($_apprSegs));
-        if (!$_changed) {
-            foreach ($_apprSegs as $_i => $_ps) {
-                if (($_ps['leaveTitle'] ?? '') !== ($_snapSegs[$_i]['leaveTitle'] ?? '')
-                    || (int)$_ps['days'] !== (int)$_snapSegs[$_i]['days']) { $_changed = true; break; }
+    if ($row['status'] == 1 && $_apprSegs) {
+        $_changed = false;
+        if ($_snapSegs) {
+            // Snapshot available — compare segment for segment.
+            $_changed = (count($_snapSegs) !== count($_apprSegs));
+            if (!$_changed) {
+                foreach ($_apprSegs as $_i => $_ps) {
+                    if (($_ps['leaveTitle'] ?? '') !== ($_snapSegs[$_i]['leaveTitle'] ?? '')
+                        || (int)$_ps['days'] !== (int)$_snapSegs[$_i]['days']) { $_changed = true; break; }
+                }
+            }
+        } elseif (!empty($row['primaryApprovedLeaveType'])) {
+            // No snapshot, but the frozen primary type and day count still say
+            // what was granted. Compared loosely — the same leave may legitimately
+            // be split across several segments.
+            $_pTitle = joining_leave_titles($con)[(int)$row['primaryApprovedLeaveType']] ?? '';
+            $_pDays  = (int)($row['primaryApprovedLeaveDays'] ?: 0);
+            if ($_pDays <= 0 && !empty($row['primaryLeaveDateFrom']) && !empty($row['primaryLeaveDateTo'])) {
+                $_pDays = dateDiffInDays($row['primaryLeaveDateFrom'], $row['primaryLeaveDateTo']) + 1;
+            }
+            $_sum    = array_sum(array_column($_apprSegs, 'days'));
+            if ($_sum !== $_pDays) {
+                $_changed = true;
+            } else {
+                foreach ($_apprSegs as $_ps) {
+                    if (($_ps['leaveTitle'] ?? '') !== $_pTitle) { $_changed = true; break; }
+                }
             }
         }
-        if ($_changed) {
-            $proposed_leave = $segBreakdown($_apprSegs, 'days-pill-warning');
-        }
+        if ($_changed) $proposed_leave = $segBreakdown($_apprSegs, 'days-pill-warning');
     }
 
     // Spent leave
