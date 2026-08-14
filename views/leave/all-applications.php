@@ -124,6 +124,7 @@ mysqli_stmt_close($_stmt);
                                 <th>আবেদনকারী</th>
                                 <th>চাহিত ছুটি</th>
                                 <th>প্রাথমিক অনুমোদিত ছুটি</th>
+                                <th>প্রস্তাবিত</th>
                                 <th>ভোগকৃত ছুটি</th>
                                 <th>যোগদানের প্রকার</th>
                                 <th>সংশোধিত ছুটি</th>
@@ -310,6 +311,7 @@ $(document).ready(function() {
             { data: 'employee_info', orderable: false },
             { data: 'requested_leave', orderable: false },
             { data: 'approved_leave', orderable: false },
+            { data: 'proposed_leave', orderable: false },
             { data: 'spent_leave', orderable: false },
             { data: 'joining_type', orderable: false },
             { data: 'corrected_leave', orderable: false },

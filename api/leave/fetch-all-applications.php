@@ -228,16 +228,21 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
     $_segRes = mysqli_stmt_get_result($_segStmt);
     $_reqSegs  = [];
     $_propSegs = [];
+    $_snapSegs = [];
     $_oldSegs  = [];
     while ($_sr = mysqli_fetch_assoc($_segRes)) {
         if ($_sr['kind'] === 'requested')     $_reqSegs[]  = $_sr;
         elseif ($_sr['kind'] === 'proposed')  $_propSegs[] = $_sr;
+        elseif ($_sr['kind'] === 'approved')  $_snapSegs[] = $_sr;
         elseif ($_sr['kind'] === null || $_sr['kind'] === '') $_oldSegs[] = $_sr;
     }
     mysqli_stmt_close($_segStmt);
     $_segs = $_reqSegs ?: $_oldSegs;
-    // What the desks settled on — drives both the approved and the spent column.
+    // The desks' current proposal — still what the spent column projects from.
     $_apprSegs = $_propSegs ?: $_oldSegs;
+    // Frozen at final approval. Applications approved before the snapshot
+    // existed have none, so fall back to the live rows.
+    $_primarySegs = $_snapSegs ?: $_apprSegs;
 
     // Renders the shared "মোট N দিন" pill + per-segment chips, date-stamping the
     // chips when the segments have gaps so the range above can't mislead.
@@ -285,12 +290,28 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
             case 10: $leaveTypeText = "অসাধারণ ছুটি";              break;
         }
         $approved_leave = '<div class="date-range"><i class="ti tabler-calendar-check"></i><span>' . banglaNumber(date_format($adateF, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($adateT, "d/m/Y")) . '</span></div>';
-        if (count($_apprSegs) > 1) {
-            $approved_leave .= $segBreakdown($_apprSegs, 'days-pill-success');
+        if (count($_primarySegs) > 1) {
+            $approved_leave .= $segBreakdown($_primarySegs, 'days-pill-success');
         } else {
             $approved_leave .= '<div class="leave-meta"><span class="days-pill days-pill-success">' . banglaNumber($adateDiff) . ' দিন</span>'
                              . ' <span class="leave-type-chip">' . htmlspecialchars($row['approvedLeaveTitle']) . '</span></div>'
                              . ($leaveTypeText ? '<div class="leave-sub">' . $leaveTypeText . '</div>' : '');
+        }
+    }
+
+    // প্রস্তাবিত — what the joining desks now propose, shown only when it differs
+    // from the frozen approval; otherwise it would just repeat the column beside it.
+    $proposed_leave = '';
+    if ($row['status'] == 1 && $_snapSegs && $_apprSegs) {
+        $_changed = (count($_snapSegs) !== count($_apprSegs));
+        if (!$_changed) {
+            foreach ($_apprSegs as $_i => $_ps) {
+                if (($_ps['leaveTitle'] ?? '') !== ($_snapSegs[$_i]['leaveTitle'] ?? '')
+                    || (int)$_ps['days'] !== (int)$_snapSegs[$_i]['days']) { $_changed = true; break; }
+            }
+        }
+        if ($_changed) {
+            $proposed_leave = $segBreakdown($_apprSegs, 'days-pill-warning');
         }
     }
 
@@ -670,6 +691,7 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
         'employee_info'   => $employee_info,
         'requested_leave' => $requested_leave,
         'approved_leave'  => $approved_leave,
+        'proposed_leave'  => $proposed_leave ?: '<span class="text-muted small">—</span>',
         'spent_leave'     => $spent_leave,
         'joining_type'    => $joining_type,
         'corrected_leave' => $corrected_leave,
