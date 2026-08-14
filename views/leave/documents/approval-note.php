@@ -143,15 +143,19 @@ function generatePDFData($leaveApplicationID) {
         $reqdateF = date_create($leaveData['primaryLeaveDateFrom']);
         $reqdateT = date_create($joiningData['requestedJoiningDate']);
         
-        // Determine leave type text
-        $approvedLeaveType = "";
-        switch ($leaveData['leaveTypeInTwo']) {
-            case 1: $approvedLeaveType = "গড় বেতন "; break;
-            case 2: $approvedLeaveType = "অর্ধ-গড় বেতন "; break;
-            case 3: $approvedLeaveType = "নৈমিত্তিক (Casual Leave)"; break;
-            case 4: $approvedLeaveType = "অসাধারণ(বিনা বেতনে ছুটি)"; break;
-            case 5: $approvedLeaveType = "ঐচ্ছিক (Optional Leave)"; break;
+        // Leave type name from leave_types. The switch this replaces only knew
+        // ids 1-5, and this is a printed note — a type outside that range left
+        // the line blank, and ids 1 and 3 were labelled with the wrong titles.
+        $approvedLeaveType = '';
+        $__ltStmt = $con->prepare("SELECT leaveTitle FROM leave_types WHERE leaveID = ? LIMIT 1");
+        $__ltId = (int)($leaveData['leaveTypeInTwo'] ?? 0);
+        if ($__ltId > 0) {
+            $__ltStmt->bind_param("i", $__ltId);
+            $__ltStmt->execute();
+            $__ltRow = $__ltStmt->get_result()->fetch_assoc();
+            $approvedLeaveType = $__ltRow['leaveTitle'] ?? '';
         }
+        $__ltStmt->close();
         
         // Get supervisor comment
         $stmt = $con->prepare("SELECT * FROM leave_joining_data_for_approval WHERE leaveApplicationID = ? AND isSupervisor = 1");
