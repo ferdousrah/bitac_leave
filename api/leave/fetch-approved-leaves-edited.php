@@ -264,55 +264,50 @@ while ($empRow = mysqli_fetch_array($dataResult)) {
         // প্রাথমিক অনুমোদিত reads the frozen snapshot; the proposed rows keep
         // changing as desks edit, and following those would erase the record of
         // what was actually granted.
-        $__primarySegs = $__apprSegs ?: $__segs;
-
+        // Always the frozen approval — the snapshot when we have one, otherwise
+        // the primary* columns. Falling back to the live proposed rows (as this
+        // did for multi-segment leaves) made the column mean different things on
+        // different rows, and quietly follow the desks' edits.
+        $__primaryDays = (int)($empRow['primaryApprovedLeaveDays'] ?: $adateDiff);
         $primaryHtml = '<div class="date-range"><i class="ti tabler-calendar-check"></i><span>' . banglaNumber(date_format($adateF, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($adateT, "d/m/Y")) . '</span></div>';
-        if (count($__primarySegs) > 1) {
-            $__pl = $__segList($__primarySegs);
-            $__segTotal = $__pl['total'];
-            $primaryHtml .= '<div class="leave-meta"><span class="days-pill days-pill-success">মোট ' . banglaNumber($__segTotal) . ' দিন</span></div>'
+        if (count($__apprSegs) > 1) {
+            $__pl = $__segList($__apprSegs);
+            $__primaryDays = $__pl['total'];
+            $primaryHtml .= '<div class="leave-meta"><span class="days-pill days-pill-success">মোট ' . banglaNumber($__primaryDays) . ' দিন</span></div>'
                           . $__pl['html'];
         } else {
-            $primaryHtml .= '<div class="leave-meta"><span class="days-pill days-pill-success">' . banglaNumber($adateDiff) . ' দিন</span>'
-                          . ($leaveTypeText ? ' <span class="leave-type-chip">' . htmlspecialchars($leaveTypeText) . '</span>' : '')
+            $__primaryTitleOnly = $__apprSegs ? ($__apprSegs[0]['leaveTitle'] ?? $leaveTypeText) : $leaveTypeText;
+            if ($__apprSegs) $__primaryDays = (int)$__apprSegs[0]['days'];
+            $primaryHtml .= '<div class="leave-meta"><span class="days-pill days-pill-success">' . banglaNumber($__primaryDays) . ' দিন</span>'
+                          . ($__primaryTitleOnly ? ' <span class="leave-type-chip">' . htmlspecialchars($__primaryTitleOnly) . '</span>' : '')
                           . '</div>';
         }
 
-        // প্রস্তাবিত — only worth a column when the desks have actually changed
-        // something; otherwise it would just repeat প্রাথমিক অনুমোদিত on every row.
-        $__proposedChanged = false;
-        if ($__apprSegs) {
-            // Snapshot available — compare segment for segment.
-            if (count($__apprSegs) !== count($__segs)) {
-                $__proposedChanged = true;
-            } else {
-                foreach ($__segs as $__i => $__sg) {
-                    if (($__sg['leaveTitle'] ?? '') !== ($__apprSegs[$__i]['leaveTitle'] ?? '')
-                        || (int)$__sg['days'] !== (int)$__apprSegs[$__i]['days']) { $__proposedChanged = true; break; }
-                }
-            }
-        } elseif ($__segs && !empty($empRow['primaryApprovedLeaveType'])) {
-            // No snapshot (approved before it existed), but leave_applications
-            // still froze the primary type and day count — enough to tell that a
-            // desk has changed something. Compared loosely, because the same
-            // leave may legitimately be split across several segments.
-            $__primaryTitle = $__ltMap[(int)$empRow['primaryApprovedLeaveType']] ?? '';
-            $__primaryDays  = (int)($empRow['primaryApprovedLeaveDays'] ?: $adateDiff);
-            $__propDays     = array_sum(array_column($__segs, 'days'));
-            if ($__propDays !== $__primaryDays) {
-                $__proposedChanged = true;
-            } else {
-                foreach ($__segs as $__sg) {
-                    if (($__sg['leaveTitle'] ?? '') !== $__primaryTitle) { $__proposedChanged = true; break; }
-                }
-            }
-        }
+        // ভোগকৃত is the same measure as সংশোধিত — a projection while the joining
+        // is still moving, the final figure once it is approved. One column with
+        // a state chip says that; two columns of the same number did not.
+        $__isFinal   = ((int)($empRow['joining_status'] ?? 0) === 1);
+        $__stateChip = $__isFinal
+            ? '<span class="badge bg-label-success"><i class="ti tabler-check me-1"></i>চূড়ান্ত</span>'
+            : '<span class="badge bg-label-warning"><i class="ti tabler-hourglass me-1"></i>অনুমোদনের অপেক্ষায়</span>';
 
-        $proposedHtml = '<span class="text-muted small">—</span>';
-        if ($__proposedChanged && $__segs) {
-            $__prop = $__segList($__segs);
-            $proposedHtml = '<div class="leave-meta"><span class="days-pill days-pill-warning">মোট '
-                          . banglaNumber($__prop['total']) . ' দিন</span></div>' . $__prop['html'];
+        // Say what actually differs from the approval instead of making the reader
+        // compare three columns of numbers.
+        $__notes = [];
+        if ($leaveSpent !== $__primaryDays) {
+            $__delta = $leaveSpent - $__primaryDays;
+            $__notes[] = ($__delta > 0)
+                ? banglaNumber(abs($__delta)) . ' দিন বেশি — বর্ধিত অংশ যুক্ত'
+                : banglaNumber(abs($__delta)) . ' দিন কম — আগেই যোগদান';
+        }
+        $__primaryTitles = $__apprSegs
+            ? array_unique(array_filter(array_column($__apprSegs, 'leaveTitle')))
+            : array_filter([$__ltMap[(int)$empRow['primaryApprovedLeaveType']] ?? '']);
+        $__spentTitles = array_unique(array_filter(array_column($__spentSegs, 'leaveTitle')));
+        $__newTitles   = array_diff($__spentTitles, $__primaryTitles);
+        if ($__primaryTitles && $__newTitles) {
+            $__notes[] = 'ছুটির ধরন পরিবর্তিত: ' . htmlspecialchars(implode(', ', $__primaryTitles))
+                       . ' → ' . htmlspecialchars(implode(', ', $__spentTitles));
         }
 
         // Spent leave
@@ -332,6 +327,11 @@ while ($empRow = mysqli_fetch_array($dataResult)) {
             }
             $spentHtml .= '<div class="seg-list">' . implode(' ', $__spentParts) . '</div>';
         }
+        $spentHtml .= '<div class="mt-1">' . $__stateChip . '</div>';
+        foreach ($__notes as $__n) {
+            $spentHtml .= '<div class="small text-muted" style="font-size:0.74rem;line-height:1.35;">'
+                        . '<i class="ti tabler-arrow-narrow-right me-1"></i>' . $__n . '</div>';
+        }
 
         // Corrected leave (already built in $correctedLeaveHtml — convert plain text to date-range pill if present)
         if (!empty($correctedLeaveHtml) && !empty($empRow['approvedDate'])) {
@@ -349,7 +349,6 @@ while ($empRow = mysqli_fetch_array($dataResult)) {
             'section' => $secCenter,
             'application_type' => $applicationTypeHtml,
             'primary_approved_leave' => $primaryHtml,
-            'proposed_leave' => $proposedHtml,
             'leave_spent' => $spentHtml,
             'corrected_leave' => $correctedHtml,
             'status' => $statusBadge,

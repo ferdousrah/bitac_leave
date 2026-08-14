@@ -108,9 +108,7 @@ $joiningTypeMap = [
                                 <th>শাখা ও কেন্দ্র</th>
                                 <th>আবেদনের প্রকার</th>
                                 <th>প্রাথমিক অনুমোদিত</th>
-                                <th>প্রস্তাবিত</th>
                                 <th>ভোগকৃত ছুটি</th>
-                                <th>সংশোধিত ছুটি</th>
                                 <th>স্টেটাস</th>
                                 <th class="text-center">নথি কার্যক্রম</th>
                             </tr>
@@ -132,9 +130,7 @@ $joiningTypeMap = [
                                 <th>শাখা ও কেন্দ্র</th>
                                 <th>আবেদনের প্রকার</th>
                                 <th>প্রাথমিক অনুমোদিত</th>
-                                <th>প্রস্তাবিত</th>
                                 <th>ভোগকৃত ছুটি</th>
-                                <th>সংশোধিত ছুটি</th>
                                 <th>স্টেটাস</th>
                                 <th class="text-center">নথি কার্যক্রম</th>
                             </tr>
@@ -171,15 +167,13 @@ var dtCols = [
     { data: "section", orderable: false },
     { data: "application_type", orderable: false },
     { data: "primary_approved_leave", orderable: false },
-    { data: "proposed_leave", orderable: false },
     { data: "leave_spent", orderable: false },
-    { data: "corrected_leave", orderable: false },
     { data: "status", orderable: false },
     { data: "action", orderable: false, searchable: false }
 ];
 
 function decorateRow(row) {
-    var labels = ['ক্রমিক', 'আবেদনকারী', 'শাখা ও কেন্দ্র', 'আবেদনের প্রকার', 'প্রাথমিক অনুমোদিত', 'প্রস্তাবিত', 'ভোগকৃত ছুটি', 'সংশোধিত ছুটি', 'স্টেটাস', 'নথি কার্যক্রম'];
+    var labels = ['ক্রমিক', 'আবেদনকারী', 'শাখা ও কেন্দ্র', 'আবেদনের প্রকার', 'প্রাথমিক অনুমোদিত', 'ভোগকৃত ছুটি', 'স্টেটাস', 'নথি কার্যক্রম'];
     var compact = [0, 3, 7, 8];
     $(row).find('td').each(function(i){
         var $td = $(this);
