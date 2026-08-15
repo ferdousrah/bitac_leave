@@ -78,7 +78,7 @@ function load_supervise_rows($con, $signatoryEmpId) {
         "SELECT ldfa.*, lja.dataID AS joiningID, lja.joiningType, lja.requestedJoiningDate,
                 lja.reason, lja.approvedLeaveType, lja.submitDate, lja.submitTime,
                 la.dataID AS appID, la.applicantID, la.approvedDateFrom, la.approvedDateTo,
-                la.approvedDays, la.leaveType
+                la.approvedDays, la.leaveType, la.approvedLeaveType AS leaveApprovedType
          FROM leave_joining_data_for_approval ldfa
          INNER JOIN leave_joining_application lja ON lja.leaveApplicationID = ldfa.leaveApplicationID
          INNER JOIN leave_applications la         ON la.dataID = ldfa.leaveApplicationID
@@ -101,7 +101,7 @@ function load_approve_rows($con, $signatoryEmpId) {
         "SELECT ldfa.*, lja.dataID AS joiningID, lja.joiningType, lja.requestedJoiningDate,
                 lja.reason, lja.approvedLeaveType, lja.submitDate, lja.submitTime,
                 la.dataID AS appID, la.applicantID, la.approvedDateFrom, la.approvedDateTo,
-                la.approvedDays, la.leaveType
+                la.approvedDays, la.leaveType, la.approvedLeaveType AS leaveApprovedType
          FROM leave_joining_data_for_approval ldfa
          INNER JOIN leave_joining_application lja ON lja.leaveApplicationID = ldfa.leaveApplicationID
          INNER JOIN leave_applications la         ON la.dataID = ldfa.leaveApplicationID
@@ -192,19 +192,39 @@ function render_joining_row($r, $sl, $con, $joiningTypeMap, $jtClassMap, $jtIcon
         $adateDiff = (int)((strtotime($adateT) - strtotime($adateF)) / 86400) + 1;
     }
 
-    $segStmt = mysqli_prepare($con,
-        "SELECT s.days, lt.leaveTitle
-         FROM leave_application_segments s
-         LEFT JOIN leave_types lt ON s.leaveType = lt.leaveID
-         WHERE s.applicationID = ?
-           AND (s.kind = 'proposed' OR s.kind IS NULL)
-         ORDER BY s.serial ASC, s.dataID ASC");
-    mysqli_stmt_bind_param($segStmt, 'i', $appID);
-    mysqli_stmt_execute($segStmt);
-    $segRes = mysqli_stmt_get_result($segStmt);
+    // This column is the leave as approved, so it reads the 'approved' snapshot
+    // written when the last signatory signed. 'proposed' rows are the working
+    // set a desk may still be editing during the joining — showing those here
+    // would report a decision nobody has taken yet. Applications approved before
+    // the snapshot existed have no 'approved' rows, so they fall back.
     $segs = [];
-    while ($sg = mysqli_fetch_assoc($segRes)) $segs[] = $sg;
-    mysqli_stmt_close($segStmt);
+    foreach (["s.kind = 'approved'", "(s.kind = 'proposed' OR s.kind IS NULL)"] as $kindWhere) {
+        $segStmt = mysqli_prepare($con,
+            "SELECT s.days, s.leaveType, lt.leaveTitle
+             FROM leave_application_segments s
+             LEFT JOIN leave_types lt ON s.leaveType = lt.leaveID
+             WHERE s.applicationID = ? AND $kindWhere
+             ORDER BY s.serial ASC, s.dataID ASC");
+        mysqli_stmt_bind_param($segStmt, 'i', $appID);
+        mysqli_stmt_execute($segStmt);
+        $segRes = mysqli_stmt_get_result($segStmt);
+        while ($sg = mysqli_fetch_assoc($segRes)) $segs[] = $sg;
+        mysqli_stmt_close($segStmt);
+        if ($segs) break;
+    }
+
+    // A single-segment leave still has a type — it just has only one. Falling
+    // back to leave_applications keeps the chip filled for rows with no segments.
+    $segTitles = [];
+    foreach ($segs as $sg) {
+        $t = trim((string)($sg['leaveTitle'] ?? ''));
+        if ($t !== '' && !in_array($t, $segTitles, true)) $segTitles[] = $t;
+    }
+    if (!$segTitles && !empty($r['leaveApprovedType'])) {
+        $ltRow = mysqli_fetch_assoc(mysqli_query($con,
+            "SELECT leaveTitle FROM leave_types WHERE leaveID = " . (int)$r['leaveApprovedType'] . " LIMIT 1"));
+        if (!empty($ltRow['leaveTitle'])) $segTitles[] = $ltRow['leaveTitle'];
+    }
 
     $primaryHtml = '<span class="text-muted small">—</span>';
     if ($adateF && $adateT) {
@@ -219,7 +239,11 @@ function render_joining_row($r, $sl, $con, $joiningTypeMap, $jtClassMap, $jtIcon
             $primaryHtml .= '<div class="leave-meta"><span class="days-pill days-pill-success">মোট ' . banglaNumber($segTotal) . ' দিন</span></div>'
                           . '<div class="seg-list">' . implode(' ', $segParts) . '</div>';
         } else {
-            $primaryHtml .= '<div class="leave-meta"><span class="days-pill days-pill-success">' . banglaNumber($adateDiff) . ' দিন</span></div>';
+            $primaryHtml .= '<div class="leave-meta"><span class="days-pill days-pill-success">' . banglaNumber($adateDiff) . ' দিন</span>';
+            foreach ($segTitles as $t) {
+                $primaryHtml .= '<span class="seg-pill ms-1">' . htmlspecialchars($t) . '</span>';
+            }
+            $primaryHtml .= '</div>';
         }
     }
 
