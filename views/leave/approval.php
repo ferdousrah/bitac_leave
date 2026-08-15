@@ -723,6 +723,33 @@ $(document).ready(function() {
         }
     });
 
+    // ── আবেদনপত্র preview modal wiring ─────────────────────
+    var $adModal  = $('#appDocModal');
+    var $adIframe = $('#appDocIframe');
+    var $adLoader = $('#appDocLoader');
+    var $adDlBtn  = $('#appDocDownloadBtn');
+
+    // Delegated — both tables re-render their rows on every DataTables draw
+    $(document).on('click', '.app-doc-view', function() {
+        var url = $(this).data('url');
+        if (!url) return;
+        $adLoader.removeClass('d-none');
+        $adIframe[0].src = url;
+        $adDlBtn.attr('href', url);
+        $adModal.modal('show');
+    });
+
+    $adIframe[0].addEventListener('load', function() {
+        if ($adIframe[0].src && $adIframe[0].src.indexOf('about:blank') === -1) {
+            $adLoader.addClass('d-none');
+        }
+    });
+
+    $adModal.on('hidden.bs.modal', function() {
+        $adIframe[0].src = 'about:blank';
+        $adLoader.removeClass('d-none');
+    });
+
 });
 
 // Exposed globally so inline HTML onclick handlers can call it.
