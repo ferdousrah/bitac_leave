@@ -278,25 +278,24 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
     if ($row['status'] == 1 && !empty($row['approvedLeaveTitle'])) {
         $adateF    = date_create($row['primaryLeaveDateFrom']);
         $adateT    = date_create($row['primaryLeaveDateTo']);
-        $adateDiff = dateDiffInDays($row['primaryLeaveDateFrom'], $row['primaryLeaveDateTo']) + 1;
+        // Sum the frozen segments; the span is only a fallback for rows that
+        // predate segments entirely.
+        $adateDiff = $_primarySegs
+            ? array_sum(array_column($_primarySegs, 'days'))
+            : dateDiffInDays($row['primaryLeaveDateFrom'], $row['primaryLeaveDateTo']) + 1;
 
-        $leaveTypeText = '';
-        switch ($row['primaryApprovedLeaveType']) {
-            case 1:  $leaveTypeText = "গড় বেতন";                  break;
-            case 2:  $leaveTypeText = "অর্ধ-গড় বেতন";             break;
-            case 3:  $leaveTypeText = "নৈমিত্তিক (Casual Leave)"; break;
-            case 4:  $leaveTypeText = "বিনা বেতনে ছুটি";           break;
-            case 5:  $leaveTypeText = "ঐচ্ছিক ছুটি";                break;
-            case 6:  $leaveTypeText = "কর্তনহীন ছুটি";              break;
-            case 10: $leaveTypeText = "অসাধারণ ছুটি";              break;
-        }
         $approved_leave = '<div class="date-range"><i class="ti tabler-calendar-check"></i><span>' . banglaNumber(date_format($adateF, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($adateT, "d/m/Y")) . '</span></div>';
         if (count($_primarySegs) > 1) {
             $approved_leave .= $segBreakdown($_primarySegs, 'days-pill-success');
         } else {
+            // The type must come off the frozen segment, not la.approvedLeaveType —
+            // a joining desk overwrites that column, which would make this column
+            // report a type that was never granted at approval time.
+            $_primaryTitle = $_primarySegs
+                ? ($_primarySegs[0]['leaveTitle'] ?? '')
+                : ($row['approvedLeaveTitle'] ?? '');
             $approved_leave .= '<div class="leave-meta"><span class="days-pill days-pill-success">' . banglaNumber($adateDiff) . ' দিন</span>'
-                             . ' <span class="leave-type-chip">' . htmlspecialchars($row['approvedLeaveTitle']) . '</span></div>'
-                             . ($leaveTypeText ? '<div class="leave-sub">' . $leaveTypeText . '</div>' : '');
+                             . ' <span class="leave-type-chip">' . htmlspecialchars($_primaryTitle) . '</span></div>';
         }
     }
 
@@ -342,12 +341,20 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
         // Project the approved segments through the joining rules instead of
         // spanning the dates — a gap between segments isn't leave, and an
         // early joining cuts the last segment short.
-        $_spentSegs = joining_effective_segments($_apprSegs, $row['joiningType'], $row['requestedJoiningDate'], [
-            'extensionSegmentsJson' => $row['lja_extensionSegmentsJson'] ?? null,
-            'approvedDateTo'        => $row['approvedDateTo'] ?? '',
-            'extLeaveType'          => $row['lja_approvedLeaveType'] ?? 0,
-            'leaveTitles'           => joining_leave_titles($con),
-        ]);
+        // Once the joining is finalised the desks have already written the
+        // extension into the live segments, so projecting it a second time would
+        // count the extension twice. Only a joining still in flight needs the
+        // projection.
+        if ((int)($row['lja_status'] ?? 0) === 1) {
+            $_spentSegs = $_apprSegs;
+        } else {
+            $_spentSegs = joining_effective_segments($_apprSegs, $row['joiningType'], $row['requestedJoiningDate'], [
+                'extensionSegmentsJson' => $row['lja_extensionSegmentsJson'] ?? null,
+                'approvedDateTo'        => $row['approvedDateTo'] ?? '',
+                'extLeaveType'          => $row['lja_approvedLeaveType'] ?? 0,
+                'leaveTitles'           => joining_leave_titles($con),
+            ]);
+        }
         $_spentSpan = joining_segments_span($_spentSegs);
         if ($_spentSpan['days'] > 0) {
             $leaveSpentDateFrom = date_create($_spentSpan['from']);
@@ -359,22 +366,16 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
             $leaveSpent         = dateDiffInDays($row['primaryLeaveDateFrom'], $row['requestedJoiningDate']) + 1;
         }
 
-        $leaveTypeText = '';
-        switch ($row['primaryApprovedLeaveType']) {
-            case 1:  $leaveTypeText = "গড় বেতন";                  break;
-            case 2:  $leaveTypeText = "অর্ধ-গড় বেতন";             break;
-            case 3:  $leaveTypeText = "নৈমিত্তিক (Casual Leave)"; break;
-            case 4:  $leaveTypeText = "বিনা বেতনে ছুটি";           break;
-            case 5:  $leaveTypeText = "ঐচ্ছিক ছুটি";                break;
-            case 6:  $leaveTypeText = "কর্তনহীন ছুটি";              break;
-            case 10: $leaveTypeText = "অসাধারণ ছুটি";              break;
-        }
         $spent_leave = '<div class="date-range"><i class="ti tabler-clock-check"></i><span>' . banglaNumber(date_format($leaveSpentDateFrom, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($leaveSpentDateTo, "d/m/Y")) . '</span></div>';
         if (count($_spentSegs) > 1) {
             $spent_leave .= $segBreakdown($_spentSegs, 'days-pill-info');
         } else {
-            $spent_leave .= '<div class="leave-meta"><span class="days-pill days-pill-info">' . banglaNumber($leaveSpent) . ' দিন</span></div>'
-                          . ($leaveTypeText ? '<div class="leave-sub">' . $leaveTypeText . '</div>' : '');
+            // Same rule as the column beside it — the name comes from the segment
+            // that was actually spent, via leave_types, never a hand-written map.
+            $_spentTitle = $_spentSegs ? ($_spentSegs[0]['leaveTitle'] ?? '') : '';
+            $spent_leave .= '<div class="leave-meta"><span class="days-pill days-pill-info">' . banglaNumber($leaveSpent) . ' দিন</span>'
+                          . ($_spentTitle ? ' <span class="leave-type-chip">' . htmlspecialchars($_spentTitle) . '</span>' : '')
+                          . '</div>';
         }
     }
 
@@ -396,21 +397,36 @@ while ($row = mysqli_fetch_assoc($dataResult)) {
     $corrected_leave = '';
     if ($hasJoining && !empty($row['lja_approvedDate'])) {
         $correctionJoiningDate = date_create($row['approvedDateTo']);
-        $correctedLeaveSpent   = dateDiffInDays($row['primaryLeaveDateFrom'], $row['approvedDateTo']) + 1;
+        // Segment sum, not the span — a gap between segments is not leave.
+        $correctedLeaveSpent   = $_spentSegs
+            ? array_sum(array_column($_spentSegs, 'days'))
+            : dateDiffInDays($row['primaryLeaveDateFrom'], $row['approvedDateTo']) + 1;
 
-        $leaveTypeText = '';
-        switch ($row['lja_approvedLeaveType']) {
-            case 1:  $leaveTypeText = "গড় বেতন";                  break;
-            case 2:  $leaveTypeText = "অর্ধ-গড় বেতন";             break;
-            case 3:  $leaveTypeText = "নৈমিত্তিক (Casual Leave)"; break;
-            case 4:  $leaveTypeText = "বিনা বেতনে ছুটি";           break;
-            case 5:  $leaveTypeText = "ঐচ্ছিক ছুটি";                break;
-            case 6:  $leaveTypeText = "কর্তনহীন ছুটি";              break;
-            case 10: $leaveTypeText = "অসাধারণ ছুটি";              break;
+        // Names come from leave_types. The old hand-written id → name list here
+        // only covered ids 1-6 and 10, so anything outside it (e.g. 21, বিনাবেতনে)
+        // silently rendered no type at all.
+        $_corrTitles = [];
+        foreach ($_spentSegs as $_cs) {
+            $_t = trim((string)($_cs['leaveTitle'] ?? ''));
+            if ($_t !== '' && !in_array($_t, $_corrTitles, true)) $_corrTitles[] = $_t;
         }
-        $corrected_leave = '<div class="date-range"><i class="ti tabler-edit"></i><span>' . banglaNumber(date_format($leaveSpentDateFrom, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($correctionJoiningDate, "d/m/Y")) . '</span></div>'
-                         . '<div class="leave-meta"><span class="days-pill days-pill-warning">' . banglaNumber($correctedLeaveSpent) . ' দিন</span></div>'
-                         . ($leaveTypeText ? '<div class="leave-sub">' . $leaveTypeText . '</div>' : '');
+        if (!$_corrTitles && !empty($row['lja_approvedLeaveType'])) {
+            $_t = joining_leave_titles($con)[(int)$row['lja_approvedLeaveType']] ?? '';
+            if ($_t !== '') $_corrTitles[] = $_t;
+        }
+        $corrected_leave = '<div class="date-range"><i class="ti tabler-edit"></i><span>' . banglaNumber(date_format($leaveSpentDateFrom, "d/m/Y")) . '</span><i class="ti tabler-arrow-narrow-right text-muted mx-1"></i><span>' . banglaNumber(date_format($correctionJoiningDate, "d/m/Y")) . '</span></div>';
+        if (count($_spentSegs) > 1) {
+            // Break the correction down the same way every other leave column
+            // does — the total alone hides an extension granted on a different
+            // leave type from the original approval.
+            $corrected_leave .= $segBreakdown($_spentSegs, 'days-pill-warning');
+        } else {
+            $corrected_leave .= '<div class="leave-meta"><span class="days-pill days-pill-warning">' . banglaNumber($correctedLeaveSpent) . ' দিন</span>';
+            foreach ($_corrTitles as $_t) {
+                $corrected_leave .= ' <span class="leave-type-chip">' . htmlspecialchars($_t) . '</span>';
+            }
+            $corrected_leave .= '</div>';
+        }
     }
 
     // Status
