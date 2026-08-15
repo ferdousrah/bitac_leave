@@ -180,6 +180,21 @@ function generatePDFData($leaveApplicationID) {
             'leaveTitles'           => joining_leave_titles($con),
         ]);
         $totalSpan = joining_segments_span($totalSegs);
+
+        // The wording must name the leave type the applicant asked for, so it is
+        // read off the frozen segments — not leave_joining_application.approvedLeaveType,
+        // which a supervisor overwrites when they correct the type. Multiple types
+        // can share one span, so every distinct title is named, in span order.
+        $__letterTitles = [];
+        foreach ($totalSegs as $__s) {
+            $__t = trim((string)($__s['leaveTitle'] ?? ''));
+            if ($__t !== '' && !in_array($__t, $__letterTitles, true)) $__letterTitles[] = $__t;
+        }
+        // Pre-snapshot letters carry no titles on their segments; fall back to the
+        // stored type so those keep rendering exactly as they always did.
+        $letterLeaveTitle = $__letterTitles
+            ? implode(' ও ', $__letterTitles)
+            : ($leaveTypeData['leaveTitle'] ?? '');
         if ($totalSpan['days'] > 0) {
             $dateDiffRequest = $totalSpan['days'];
             $totalFrom       = date_create($totalSpan['from']);
@@ -279,7 +294,7 @@ function generatePDFData($leaveApplicationID) {
         $html .= banglaNumber(date_format($totalFrom, "d/m/Y"));
         $html .= ' থেকে ' . banglaNumber(date_format($totalTo, "d/m/Y"));
         $html .= ' তারিখ পর্যন্ত ' . banglaNumber($dateDiffRequest);
-        $html .= ' দিনের ' . htmlspecialchars($leaveTypeData['leaveTitle']);
+        $html .= ' দিনের ' . htmlspecialchars($letterLeaveTitle);
         $html .= ' ছুটি মঞ্জুরকরতঃ আমাকে কর্মস্থলে যোগদানের অনুমতি প্রদান করে বাধিত করবেন।</p>';
         
         $html .= '<p>&nbsp;</p>';
