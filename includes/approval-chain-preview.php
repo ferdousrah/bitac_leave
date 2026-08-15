@@ -27,7 +27,7 @@ function approval_chain_rows($con, $table, $leaveApplicationID)
     $q = mysqli_query($con,
         "SELECT c.dataID, c.signatory, c.serial, c.isSupervisor, c.isSentbyAdmin,
                 c.isApproved, c.approvedDate, c.note,
-                el.employee_name, jt.job_title_name
+                el.employee_name, el.employee_id, jt.job_title_name
          FROM `$table` c
          LEFT JOIN employee_list el ON c.signatory   = el.id
          LEFT JOIN job_title     jt ON el.designation = jt.id
@@ -35,6 +35,19 @@ function approval_chain_rows($con, $table, $leaveApplicationID)
          ORDER BY c.serial ASC, c.dataID ASC");
     if ($q) while ($r = mysqli_fetch_assoc($q)) $rows[] = $r;
     return $rows;
+}
+
+/**
+ * The employee ID rendered next to a name. Names repeat across centres, so the
+ * ID is what actually tells two people apart when picking a signatory.
+ * Non-numeric IDs exist (probationary temps look like P-2026-001), and
+ * banglaNumber() only touches digits, so it is safe to run over any of them.
+ */
+function approval_chain_eid($employeeId)
+{
+    $employeeId = trim((string)$employeeId);
+    if ($employeeId === '') return '';
+    return ' <span class="chain-eid">(' . htmlspecialchars(banglaNumber($employeeId)) . ')</span>';
 }
 
 /** Emits the chain-line styles once per page. */
@@ -61,6 +74,7 @@ function approval_chain_styles()
 .chain-line.is-blocked .chain-serial  { background:#a9adc4; }
 .chain-line .chain-name { font-weight: 600; color: #2c2e3a; }
 .chain-line .chain-sub  { font-size: 0.74rem; color: #8a90a6; }
+.chain-line .chain-eid  { font-weight: 500; font-size: 0.76rem; color: #8a90a6; margin-left: 4px; }
 .chain-line .chain-status { margin-left: auto; font-size: 0.74rem; font-weight: 600; text-align: right; }
 .chain-line.is-done .chain-status     { color: #1a7e44; }
 .chain-line.is-current .chain-status  { color: #6c5ce7; }
@@ -128,7 +142,7 @@ function render_approval_chain($con, $table, $leaveApplicationID, array $opts = 
         <div class="chain-line <?= $cls ?>">
             <span class="chain-serial"><?= banglaNumber((int)$r['serial']) ?></span>
             <div>
-                <div class="chain-name"><?= htmlspecialchars($r['employee_name'] ?? '—') ?><?= $role ?></div>
+                <div class="chain-name"><?= htmlspecialchars($r['employee_name'] ?? '—') ?><?= approval_chain_eid($r['employee_id'] ?? '') ?><?= $role ?></div>
                 <div class="chain-sub"><?= htmlspecialchars($r['job_title_name'] ?? '') ?></div>
             </div>
             <span class="chain-status"><?= $status ?></span>
@@ -274,7 +288,7 @@ function render_approval_chain_editor($con, $table, $leaveApplicationID, array $
     // Candidates to add: this centre plus the HQ signatories, minus the applicant.
     $cands = [];
     $cq = mysqli_query($con,
-        "SELECT el.id, el.employee_name, jt.job_title_name
+        "SELECT el.id, el.employee_name, el.employee_id, jt.job_title_name
          FROM employee_list el
          LEFT JOIN job_title jt ON jt.id = el.designation
          WHERE el.employment_status = 1 AND el.pending_section_assignment = 0
@@ -298,7 +312,7 @@ function render_approval_chain_editor($con, $table, $leaveApplicationID, array $
         $role = ((int)$r['isSupervisor'] === 1) ? ' <small class="text-muted">(সুপারিশ)</small>' : '';
         echo '<div class="chain-line ' . $cls . '">'
            . '<span class="chain-serial">' . banglaNumber((int)$r['serial']) . '</span>'
-           . '<div><div class="chain-name">' . htmlspecialchars($r['employee_name'] ?? '—') . $role . '</div>'
+           . '<div><div class="chain-name">' . htmlspecialchars($r['employee_name'] ?? '—') . approval_chain_eid($r['employee_id'] ?? '') . $role . '</div>'
            . '<div class="chain-sub">' . htmlspecialchars($r['job_title_name'] ?? '') . '</div></div>'
            . '<span class="chain-status">' . $st . '<i class="ti tabler-lock ms-2" title="সম্পাদনা করা যাবে না"></i></span>'
            . '</div>';
@@ -310,7 +324,7 @@ function render_approval_chain_editor($con, $table, $leaveApplicationID, array $
         echo '<div class="chain-line chain-edit-row" data-sig="' . $sig . '">'
            . '<span class="chain-drag" title="টেনে সরান"><i class="ti tabler-grip-vertical"></i></span>'
            . '<span class="chain-serial"></span>'
-           . '<div><div class="chain-name">' . htmlspecialchars($r['employee_name'] ?? '—') . '</div>'
+           . '<div><div class="chain-name">' . htmlspecialchars($r['employee_name'] ?? '—') . approval_chain_eid($r['employee_id'] ?? '') . '</div>'
            . '<div class="chain-sub">' . htmlspecialchars($r['job_title_name'] ?? '') . '</div></div>'
            . '<span class="chain-status">'
            . '<input type="hidden" name="chainSignatory[]" value="' . $sig . '">'
@@ -323,10 +337,19 @@ function render_approval_chain_editor($con, $table, $leaveApplicationID, array $
        . '<select id="chainAddPick" class="form-select form-select-sm" style="max-width:340px;">'
        . '<option value="">-- ধাপ যোগ করুন --</option>';
     foreach ($cands as $c) {
-        $label = $c['employee_name'] . ($c['job_title_name'] ? ', ' . $c['job_title_name'] : '');
+        $eid   = trim((string)($c['employee_id'] ?? ''));
+        $label = $c['employee_name']
+               . ($eid !== '' ? ' (' . banglaNumber($eid) . ')' : '')
+               . ($c['job_title_name'] ? ', ' . $c['job_title_name'] : '');
+        // The visible label carries Bangla digits, but people type Latin ones —
+        // so both forms go into the haystack the matcher searches.
+        $haystack = $c['employee_name'] . ' ' . ($c['job_title_name'] ?? '')
+                  . ' ' . $eid . ' ' . banglaNumber($eid);
         echo '<option value="' . (int)$c['id'] . '"'
            . ' data-name="' . htmlspecialchars($c['employee_name'], ENT_QUOTES) . '"'
-           . ' data-title="' . htmlspecialchars($c['job_title_name'] ?? '', ENT_QUOTES) . '">'
+           . ' data-eid="' . htmlspecialchars($eid, ENT_QUOTES) . '"'
+           . ' data-title="' . htmlspecialchars($c['job_title_name'] ?? '', ENT_QUOTES) . '"'
+           . ' data-search="' . htmlspecialchars($haystack, ENT_QUOTES) . '">'
            . htmlspecialchars($label) . '</option>';
     }
     echo '</select>'
@@ -337,8 +360,12 @@ function render_approval_chain_editor($con, $table, $leaveApplicationID, array $
 
     $lockedCount = count($locked);
     echo '<script type="text/javascript">'
+       . 'var chainBootTries = 0;'
        . '(function bootChainEditor() {'
        . '  if (typeof jQuery === "undefined" || !jQuery.fn) return setTimeout(bootChainEditor, 20);'
+       // select2 arrives from the footer (CDN), so give it a bounded wait —
+       // if it never shows up the editor still works, just without the search box.
+       . '  if (!jQuery.fn.select2 && ++chainBootTries < 100) return setTimeout(bootChainEditor, 20);'
        . '  var $ = jQuery, $body = $("#chainEditBody");'
        . '  if (!$body.length || $body.data("chainInit")) return;'
        . '  $body.data("chainInit", true);'
@@ -370,10 +397,29 @@ function render_approval_chain_editor($con, $table, $leaveApplicationID, array $
        . '    $body.append(row);'
        . '    var $new = $(row);'
        . '    $new.find("input[name=\'chainSignatory[]\']").val(id);'
-       . '    $new.find(".chain-name").text($opt.data("name") || "");'
+       . '    var $nm = $new.find(".chain-name").text($opt.data("name") || "");'
+       . '    var eid = String($opt.data("eid") || "");'
+       . '    if (eid) { $nm.append($("<span class=\'chain-eid\'></span>").text("(" + bn(eid) + ")")); }'
        . '    $new.find(".chain-sub").text($opt.data("title") || "");'
-       . '    $pick.val(""); renumber();'
+       . '    $pick.val("").trigger("change"); renumber();'
        . '  });'
+       // Searchable picker — the centre list runs to a few hundred names, so
+       // scrolling to find one is not workable. Matches name, designation and
+       // employee ID in either digit script.
+       . '  if ($.fn.select2 && !$("#chainAddPick").hasClass("select2-hidden-accessible")) {'
+       . '    $("#chainAddPick").select2({'
+       . '      width: "340px",'
+       . '      placeholder: "নাম, পদবি বা আইডি দিয়ে খুঁজুন",'
+       . '      allowClear: true,'
+       . '      language: { noResults: function () { return "কাউকে পাওয়া যায়নি"; }, searching: function () { return "খোঁজা হচ্ছে…"; } },'
+       . '      matcher: function (params, data) {'
+       . '        if ($.trim(params.term || "") === "") return data;'
+       . '        if (!data.element) return null;'
+       . '        var hay = String($(data.element).data("search") || data.text || "").toLowerCase();'
+       . '        return hay.indexOf($.trim(params.term).toLowerCase()) > -1 ? data : null;'
+       . '      }'
+       . '    });'
+       . '  }'
        . '  if ($.fn.sortable) {'
        . '    $body.sortable({ handle: ".chain-drag", axis: "y", placeholder: "chain-drop-placeholder", forcePlaceholderSize: true, update: renumber });'
        . '  }'
