@@ -513,7 +513,12 @@ function initializePageComponents() {
 
     // Initialize Select2 if exists (using CDN version with Bootstrap 5 theme)
     if (typeof jQuery !== 'undefined' && jQuery.fn.select2) {
-        jQuery('.select2').each(function() {
+        // `select.select2`, not `.select2` — Select2 gives its own generated
+        // container span the class `select2` as well. A bare selector matches
+        // those spans and re-initialises Select2 on a <span>, producing an empty
+        // English "Select... / No results found" widget on top of a perfectly
+        // good picker that some page-level script had already initialised.
+        jQuery('select.select2').each(function() {
             var $this = jQuery(this);
             // Destroy existing Select2 instance if present (handles Turbo navigation)
             if ($this.hasClass('select2-hidden-accessible')) {
@@ -568,7 +573,7 @@ if (!window._turboEventsInitialized && typeof Turbo !== 'undefined') {
                 } catch(e) {}
             });
             // Remove any leftover position-relative wrappers added by initializePageComponents
-            jQuery('.select2').each(function() {
+            jQuery('select.select2').each(function() {
                 var $this = jQuery(this);
                 var $parent = $this.parent();
                 if ($parent.hasClass('position-relative') && $parent.children().length === 1) {

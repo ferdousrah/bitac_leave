@@ -463,7 +463,7 @@ jQuery(function($) {
                         buttonsStyling: false
                     }).then(function() {
                         form.trigger('reset');
-                        $('.select2').each(function() {
+                        $('select.select2').each(function() {
                             $(this).val('').trigger('change');
                         });
                     });
