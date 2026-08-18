@@ -217,6 +217,8 @@ function generatePDFData($leaveApplicationID) {
             table td { border: 1px solid #000; padding: 8px; vertical-align: top; }
             .signature-img { height: 60px; }
             .small-text { font-size: 11px; }
+            .role-cell { text-align: center; vertical-align: middle; }
+            .date-line { margin-bottom: 2px; }
         </style>';
         
         // Header
@@ -289,89 +291,136 @@ function generatePDFData($leaveApplicationID) {
         
         $html .= '<p>&nbsp;</p>';
         
-        // Approval table
+        // Approval table — same layout as the joining note and the printed BITAC
+        // form: a role column grouping the desks, then name and post, the leave
+        // being proposed, remarks and signature.
+
+        // Supervisor (বিভাগীয় প্রধান) — fetched above as $supervisorComment for the
+        // paragraph; the form needs their name, post and signature as well.
+        $supEmp = null; $supDesig = null; $supOrg = null;
+        if ($supervisorComment) {
+            $stmt = $con->prepare("SELECT * FROM employee_list WHERE id = ?");
+            $stmt->bind_param("i", $supervisorComment['signatory']);
+            $stmt->execute();
+            $supEmp = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+            if ($supEmp) {
+                $__desigId = !empty($supervisorComment['designation_id'])
+                    ? $supervisorComment['designation_id'] : $supEmp['designation'];
+                $stmt = $con->prepare("SELECT * FROM job_title WHERE id = ?");
+                $stmt->bind_param("i", $__desigId);
+                $stmt->execute();
+                $supDesig = $stmt->get_result()->fetch_assoc();
+                $stmt->close();
+
+                $__orgId = !empty($supervisorComment['organization_id'])
+                    ? $supervisorComment['organization_id'] : $supEmp['organization_id'];
+                if (!empty($__orgId)) {
+                    $stmt = $con->prepare("SELECT * FROM organization WHERE id = ?");
+                    $stmt->bind_param("i", $__orgId);
+                    $stmt->execute();
+                    $supOrg = $stmt->get_result()->fetch_assoc();
+                    $stmt->close();
+                }
+            }
+        }
+
+        // One signature renderer for all three row kinds. The stored blob is
+        // sometimes raw bytes and sometimes already base64, and the type is
+        // sniffed from the decoded bytes — the signatory rows used to hard-code
+        // image/png, so a JPEG signature rendered as a broken image.
+        $renderSignature = function ($blob, $dateObj) {
+            if (empty($blob)) return '';
+            $imageType = 'image/png';
+            $decoded   = @base64_decode($blob, true);
+            if ($decoded !== false) {
+                $sigBase64 = $blob;
+                $probe     = $decoded;
+            } else {
+                $sigBase64 = base64_encode($blob);
+                $probe     = $blob;
+            }
+            $finfo    = new finfo(FILEINFO_MIME_TYPE);
+            $mimeType = @$finfo->buffer($probe);
+            if ($mimeType === 'image/jpeg' || $mimeType === 'image/jpg') $imageType = 'image/jpeg';
+            if (empty($sigBase64)) return '';
+            $out = '<img src="data:' . $imageType . ';base64,' . $sigBase64 . '" style="height: 60px;" /><br>';
+            if ($dateObj) {
+                $out .= '<span class="small-text">' . banglaNumber(date_format($dateObj, "d.m.Y")) . '</span>';
+            }
+            return $out;
+        };
+
+        // ছুটির প্রস্তাবনা — the leave this note asks approval for, taken from the
+        // frozen requested segments so a multi-type application names each part
+        // rather than collapsing to one figure.
+        $proposalHtml = '<div class="date-line">' . banglaNumber(date_format($dateF, "d/m/Y"))
+                      . ' হতে ' . banglaNumber(date_format($dateT, "d/m/Y")) . ' তারিখ পর্যন্ত</div>'
+                      . banglaNumber($totalSegDays) . ' দিন';
+        if ($isMultiSeg) {
+            foreach ($reqSegRows as $sg) {
+                $proposalHtml .= '<br><span class="small-text">' . banglaNumber((int)$sg['days']) . ' দিন '
+                               . htmlspecialchars($sg['leaveTitle'] ?? '') . '</span>';
+            }
+        } else {
+            $__t = trim((string)($reqSegRows[0]['leaveTitle'] ?? ($leaveTypeData['leaveTitle'] ?? '')));
+            if ($__t !== '') $proposalHtml .= '<br><span class="small-text">' . htmlspecialchars($__t) . '</span>';
+        }
+
+        // Renders one name cell: name, post and centre, as the form has them.
+        $nameCell = function ($emp, $desig, $org) {
+            $out = '<div style="padding: 10px;">';
+            if ($emp) {
+                $out .= htmlspecialchars($emp['employee_name']) . '<br>';
+                if ($desig) $out .= htmlspecialchars($desig['job_title_name']);
+                if ($org)   $out .= '<br>' . htmlspecialchars($org['organization_name']);
+            }
+            return $out . '</div>';
+        };
+
         $html .= '<table>';
         $html .= '<tr>';
-        $html .= '<td>&nbsp;&nbsp;ক্রমিক</td>';
-        $html .= '<td>&nbsp;&nbsp;অনুমোদনকারী কর্মকর্তার নাম ও পদবি</td>';
-        $html .= '<td>&nbsp;&nbsp;মন্তব্য</td>';
-        $html .= '<td>&nbsp;&nbsp;স্বাক্ষর</td>';
+        $html .= '<td style="width: 15%;"></td>';
+        $html .= '<td style="width: 22%;">কর্মকর্তা/ কর্মচারীর নাম ও পদবী</td>';
+        $html .= '<td style="width: 25%;">ছুটির প্রস্তাবনা</td>';
+        $html .= '<td style="width: 23%;">মন্তব্য</td>';
+        $html .= '<td style="width: 15%;">স্বাক্ষর</td>';
         $html .= '</tr>';
-        
-        // First row - Initiator
+
+        // বিভাগীয় প্রধান — the supervisor, whose desk proposes the leave.
         $html .= '<tr>';
-        $html .= '<td>&nbsp;&nbsp;১</td>';
-        $html .= '<td><div style="padding: 10px;">';
-        if ($initiatorData) {
-            $html .= htmlspecialchars($initiatorData['employee_name']) . '<br>';
-            if ($initiatorDesignation) {
-                $html .= htmlspecialchars($initiatorDesignation['job_title_name']);
-            }
-            if ($orgData) {
-                $html .= '<br>' . htmlspecialchars($orgData['organization_name']);
-            }
-        }
-        $html .= '</div></td>';
-        $html .= '<td><div style="padding: 10px;">' . htmlspecialchars($leaveData['adminNote'] ?? '') . '</div></td>';
-        $html .= '<td>';
-        
-        if ($initiatorUser && !empty($initiatorUser['signature'])) {
-            $sig = $initiatorUser['signature'];
-            
-            // Detect image type
-            $imageType = 'image/png'; // default
-            $decoded = @base64_decode($sig, true);
-            
-            if ($decoded !== false) {
-                // Check if it's already base64 encoded
-                $finfo = new finfo(FILEINFO_MIME_TYPE);
-                $mimeType = @$finfo->buffer($decoded);
-                
-                if ($mimeType === 'image/jpeg' || $mimeType === 'image/jpg') {
-                    $imageType = 'image/jpeg';
-                } else if ($mimeType === 'image/png') {
-                    $imageType = 'image/png';
-                }
-                
-                $sigBase64 = $sig;
-            } else {
-                // Not base64 encoded, encode it
-                $sigBase64 = base64_encode($sig);
-                
-                // Try to detect from raw data
-                $finfo = new finfo(FILEINFO_MIME_TYPE);
-                $mimeType = @$finfo->buffer($sig);
-                
-                if ($mimeType === 'image/jpeg' || $mimeType === 'image/jpg') {
-                    $imageType = 'image/jpeg';
-                }
-            }
-            
-            if (!empty($sigBase64)) {
-                $html .= '<img src="data:' . $imageType . ';base64,' . $sigBase64 . '" style="height: 60px;" /><br>';
-            }
-            
-            if (!empty($leaveData['adminNoteDate'])) {
-                $adminNoteDate = date_create($leaveData['adminNoteDate']);
-                $html .= '<span class="small-text">' . banglaNumber(date_format($adminNoteDate, "d.m.Y")) . '</span>';
-            }
-        }
-        
-        $html .= '</td>';
+        $html .= '<td class="role-cell">বিভাগীয় প্রধান</td>';
+        $html .= '<td>' . $nameCell($supEmp, $supDesig, $supOrg) . '</td>';
+        $html .= '<td><div style="padding: 10px;">' . $proposalHtml . '</div></td>';
+        $html .= '<td><div style="padding: 10px;">' . htmlspecialchars($supervisorComment['note'] ?? '') . '</div></td>';
+        $html .= '<td>' . ($supervisorComment
+            ? $renderSignature($supervisorComment['signature'] ?? '',
+                !empty($supervisorComment['approvedDate']) ? date_create($supervisorComment['approvedDate']) : null)
+            : '') . '</td>';
         $html .= '</tr>';
-        
-        // Other signatories
-        $sl = 1;
+
+        // নথি উপস্থাপক — the desk that put the note up for approval.
+        $html .= '<tr>';
+        $html .= '<td class="role-cell">নথি উপস্থাপক</td>';
+        $html .= '<td>' . $nameCell($initiatorData, $initiatorDesignation, $orgData) . '</td>';
+        $html .= '<td></td>';
+        $html .= '<td><div style="padding: 10px;">' . htmlspecialchars($leaveData['adminNote'] ?? '') . '</div></td>';
+        $html .= '<td>' . $renderSignature($initiatorUser['signature'] ?? '',
+            !empty($leaveData['adminNoteDate']) ? date_create($leaveData['adminNoteDate']) : null) . '</td>';
+        $html .= '</tr>';
+
+        // নথি অনুমোদনকারী গণ — one label cell spanning every signatory row.
+        $sigCount = count($signatories);
+        $rowIndex = 0;
         foreach ($signatories as $signatory) {
-            $sl++;
-            
             $stmt = $con->prepare("SELECT * FROM employee_list WHERE id = ?");
             $stmt->bind_param("i", $signatory['signatory']);
             $stmt->execute();
             $sigEmpData = $stmt->get_result()->fetch_assoc();
             $stmt->close();
-            
+
             $sigDesignation = null;
+            $sigOrg = null;
             if ($sigEmpData) {
                 $stmt = $con->prepare("SELECT * FROM job_title WHERE id = ?");
                 $stmt->bind_param("i", $signatory['designation_id']);
@@ -379,51 +428,31 @@ function generatePDFData($leaveApplicationID) {
                 $sigDesignation = $stmt->get_result()->fetch_assoc();
                 $stmt->close();
 
-                // organization and section can also be fetched if needed using $signatory['organization_id'] and $signatory['section_id']
-                $orgData = null;
                 if (!empty($signatory['organization_id'])) {
                     $stmt = $con->prepare("SELECT * FROM organization WHERE id = ?");
                     $stmt->bind_param("i", $signatory['organization_id']);
                     $stmt->execute();
-                    $orgData = $stmt->get_result()->fetch_assoc();
+                    $sigOrg = $stmt->get_result()->fetch_assoc();
                     $stmt->close();
                 }
             }
-            
+
             $html .= '<tr>';
-            $html .= '<td>&nbsp;&nbsp;' . banglaNumber($sl) . '</td>';
-            $html .= '<td><div style="padding: 10px;">';
-            if ($sigEmpData) {
-                $html .= htmlspecialchars($sigEmpData['employee_name']) . '<br>';
-                if ($sigDesignation) {
-                    $html .= htmlspecialchars($sigDesignation['job_title_name']);
-                }
-                if ($orgData) {
-                    $html .= '<br>' . htmlspecialchars($orgData['organization_name']);
-                }
+            if ($rowIndex === 0) {
+                $html .= '<td rowspan="' . $sigCount . '" class="role-cell">নথি অনুমোদনকারী গণ</td>';
             }
-            $html .= '</div></td>';
+            $html .= '<td>' . $nameCell($sigEmpData, $sigDesignation, $sigOrg) . '</td>';
+            $html .= '<td></td>';
             $html .= '<td><div style="padding: 10px;">' . htmlspecialchars($signatory['note'] ?? '') . '</div></td>';
-            $html .= '<td>';
-            
-            if (!empty($signatory['signature'])) {
-                $sig = $signatory['signature'];
-                $decoded = @base64_decode($sig, true);
-                $sigBase64 = ($decoded !== false && @imagecreatefromstring($decoded)) ? $sig : base64_encode($sig);
-                if (!empty($sigBase64)) {
-                    $html .= '<img src="data:image/png;base64,' . $sigBase64 . '" style="height: 60px;" /><br>';
-                }
-                
-                if (!empty($signatory['approvedDate'])) {
-                    $approvedDate = date_create($signatory['approvedDate']);
-                    $html .= '<span class="small-text">' . banglaNumber(date_format($approvedDate, "d.m.Y")) . '</span>';
-                }
-            }
-            
-            $html .= '</td>';
+            $html .= '<td>' . $renderSignature($signatory['signature'] ?? '',
+                !empty($signatory['approvedDate']) ? date_create($signatory['approvedDate']) : null) . '</td>';
             $html .= '</tr>';
+            $rowIndex++;
         }
-        
+        if ($rowIndex === 0) {
+            $html .= '<tr><td class="role-cell">নথি অনুমোদনকারী গণ</td><td></td><td></td><td></td><td></td></tr>';
+        }
+
         $html .= '</table>';
         
         // Create PDF
