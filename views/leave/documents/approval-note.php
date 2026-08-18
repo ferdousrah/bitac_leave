@@ -54,6 +54,7 @@ function generatePDFData($leaveApplicationID) {
     try {
         require_once(__DIR__ . '/../../../connection.php');
         require_once(__DIR__ . '/../../../library/number_converter.php');
+        require_once(__DIR__ . '/../../../includes/joining-effective-leave.php');
 
         // Load mPDF
         $autoload_paths = [
@@ -173,8 +174,7 @@ function generatePDFData($leaveApplicationID) {
             $contentstr .= banglaNumber(date_format($reqdateF, "d/m/Y")) . ' হতে ' . banglaNumber(date_format($reqdateT, "d/m/Y"));
             $contentstr .= " তারিখ পর্যন্ত " . banglaNumber($reqDateDiff) . " দিনের ছুটি ভোগ করে অগ্রিম যোগদান পত্র পেশ করেছেন। ";
             $contentstr .= "যোগদান পত্রে তিনি " . banglaNumber($dateDiff) . " দিনের ছুটির পরিবর্তে ";
-            $contentstr .= banglaNumber($reqDateDiff) . " দিনের ছুটি মঞ্জুরের আবেদন করেছেন এবং তাতে বিভাগীয় প্রধান '";
-            $contentstr .= ($supervisorComment ? $supervisorComment['note'] : '') . "' মর্মে মন্তব্য করেছেন। সদয় অনুমোদনের জন্য পেশ করা হলো।";
+            $contentstr .= banglaNumber($reqDateDiff) . " দিনের ছুটি মঞ্জুরের আবেদন করেছেন। সদয় অনুমোদনের জন্য পেশ করা হলো।";
         } else if ($joiningData['joiningType'] == 3) {
             // Extended leave
             $contentstr = banglaNumber(date_format($dateF, "d/m/Y")) . ' হতে ' . banglaNumber(date_format($dateT, "d/m/Y"));
@@ -182,8 +182,7 @@ function generatePDFData($leaveApplicationID) {
             $contentstr .= " ছুটি শেষে " . $joiningData['reason'] . " কর্মস্থলে সঠিক সময়ে যোগদান না করে ";
             $contentstr .= banglaNumber(date_format($reqdateF, "d/m/Y")) . ' হতে ' . banglaNumber(date_format($reqdateT, "d/m/Y"));
             $contentstr .= " তারিখ পর্যন্ত " . banglaNumber($reqDateDiff) . " দিন অনুপস্থিত ছিলেন। ";
-            $contentstr .= "তিনি তাঁর যোগদান পত্রে অনুপস্থিতির দিনগুলোর ছুটি মঞ্জুরের আবেদন করেছেন এবং তাতে বিভাগীর প্রধান '";
-            $contentstr .= ($supervisorComment ? $supervisorComment['note'] : '') . "' মর্মে মন্তব্য পেশ করেছেন। সদয় সিদ্ধান্ত ও অনুমোদনের জন্য পেশ করা হলো।";
+            $contentstr .= "তিনি তাঁর যোগদান পত্রে অনুপস্থিতির দিনগুলোর ছুটি মঞ্জুরের আবেদন করেছেন। সদয় সিদ্ধান্ত ও অনুমোদনের জন্য পেশ করা হলো।";
         }
         
         // Get initiator details
@@ -238,6 +237,7 @@ function generatePDFData($leaveApplicationID) {
             table td { border: 1px solid #000; padding: 8px; vertical-align: top; }
             .signature-img { height: 60px; }
             .small-text { font-size: 11px; }
+            .role-cell { text-align: center; vertical-align: middle; }
         </style>';
         
         // Header
@@ -265,77 +265,145 @@ function generatePDFData($leaveApplicationID) {
         
         $html .= '<p>&nbsp;</p>';
         
-        // Approval table
+        // Approval table — laid out like the printed BITAC form: a role column
+        // grouping the desks (বিভাগীয় প্রধান / নথি উপস্থাপক / নথি অনুমোদনকারী গণ),
+        // then name and post, the leave being proposed, remarks and signature.
+
+        // Supervisor (বিভাগীয় প্রধান) — already fetched as $supervisorComment for
+        // the paragraph above; the form needs their name, post and signature too.
+        $supEmp = null; $supDesig = null;
+        if ($supervisorComment) {
+            $stmt = $con->prepare("SELECT * FROM employee_list WHERE id = ?");
+            $stmt->bind_param("i", $supervisorComment['signatory']);
+            $stmt->execute();
+            $supEmp = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+            if ($supEmp) {
+                $stmt = $con->prepare("SELECT * FROM job_title WHERE id = ?");
+                $stmt->bind_param("i", $supEmp['designation']);
+                $stmt->execute();
+                $supDesig = $stmt->get_result()->fetch_assoc();
+                $stmt->close();
+            }
+        }
+
+        // One signature renderer for all three row kinds. The stored blob is
+        // sometimes raw bytes and sometimes already base64, so the type is
+        // sniffed from the decoded bytes either way.
+        $renderSignature = function ($blob, $dateObj) {
+            if (empty($blob)) return '';
+            $imageType = 'image/png';
+            $decoded   = @base64_decode($blob, true);
+            if ($decoded !== false) {
+                $sigBase64 = $blob;
+                $probe     = $decoded;
+            } else {
+                $sigBase64 = base64_encode($blob);
+                $probe     = $blob;
+            }
+            $finfo    = new finfo(FILEINFO_MIME_TYPE);
+            $mimeType = @$finfo->buffer($probe);
+            if ($mimeType === 'image/jpeg' || $mimeType === 'image/jpg') $imageType = 'image/jpeg';
+            if (empty($sigBase64)) return '';
+            $out = '<img src="data:' . $imageType . ';base64,' . $sigBase64 . '" style="height: 60px;" /><br>';
+            if ($dateObj) {
+                $out .= '<span class="small-text">' . banglaNumber(date_format($dateObj, "d.m.Y")) . '</span>';
+            }
+            return $out;
+        };
+
+        // ছুটির প্রস্তাবনা — the leave this note asks approval for, read off the
+        // segments so an extension granted on a different leave type is named
+        // instead of being folded into a single figure.
+        $proposalHtml = '';
+        $__jSegs = [];
+        foreach (["kind = 'proposed'", "kind = 'approved'", "(kind IS NULL OR kind = '')"] as $__w) {
+            $__sq = mysqli_query($con,
+                "SELECT s.days, s.dateFrom, s.dateTo, s.leaveType, lt.leaveTitle
+                 FROM leave_application_segments s
+                 LEFT JOIN leave_types lt ON lt.leaveID = s.leaveType
+                 WHERE s.applicationID = " . (int)$leaveApplicationID . " AND s.$__w
+                 ORDER BY s.serial ASC, s.dataID ASC");
+            if ($__sq) while ($__sr = mysqli_fetch_assoc($__sq)) $__jSegs[] = $__sr;
+            if ($__jSegs) break;
+        }
+        if ((int)$joiningData['status'] !== 1) {
+            // Still in flight — the extension has not been written into the live
+            // segments yet, so project it the way the finalize will apply it.
+            $__jSegs = joining_effective_segments($__jSegs, (int)$joiningData['joiningType'],
+                $joiningData['requestedJoiningDate'], [
+                    'extensionSegmentsJson' => $joiningData['extensionSegmentsJson'] ?? null,
+                    'approvedDateTo'        => $leaveData['approvedDateTo'] ?? '',
+                    'extLeaveType'          => $joiningData['approvedLeaveType'] ?? 0,
+                    'leaveTitles'           => joining_leave_titles($con),
+                ]);
+        }
+        $__jSpan = joining_segments_span($__jSegs);
+        if ($__jSpan['days'] > 0) {
+            $proposalHtml = banglaNumber(date('d/m/Y', strtotime($__jSpan['from']))) . ' হতে '
+                          . banglaNumber(date('d/m/Y', strtotime($__jSpan['to']))) . ' তারিখ পর্যন্ত<br>'
+                          . '' . banglaNumber($__jSpan['days']) . ' দিন';
+            if (count($__jSegs) > 1) {
+                foreach ($__jSegs as $__s) {
+                    $proposalHtml .= '<br><span class="small-text">' . banglaNumber((int)$__s['days']) . ' দিন '
+                                   . htmlspecialchars($__s['leaveTitle'] ?? '') . '</span>';
+                }
+            } else {
+                $__t = trim((string)($__jSegs[0]['leaveTitle'] ?? ''));
+                if ($__t !== '') $proposalHtml .= '<br><span class="small-text">' . htmlspecialchars($__t) . '</span>';
+            }
+        }
+
         $html .= '<table>';
         $html .= '<tr>';
-        $html .= '<td>ক্রমিক</td>';
-        $html .= '<td>অনুমোদনকারী কর্মকর্তার নাম ও পদবি</td>';
-        $html .= '<td>মন্তব্য</td>';
-        $html .= '<td>স্বাক্ষর</td>';
+        $html .= '<td style="width: 15%;"></td>';
+        $html .= '<td style="width: 22%;">কর্মকর্তা/ কর্মচারীর নাম ও পদবী</td>';
+        $html .= '<td style="width: 25%;">ছুটির প্রস্তাবনা</td>';
+        $html .= '<td style="width: 23%;">মন্তব্য</td>';
+        $html .= '<td style="width: 15%;">স্বাক্ষর</td>';
         $html .= '</tr>';
-        
-        // First row - Initiator
+
+        // বিভাগীয় প্রধান — the supervisor, whose desk proposes the leave.
         $html .= '<tr>';
-        $html .= '<td>১</td>';
+        $html .= '<td class="role-cell">বিভাগীয় প্রধান</td>';
+        $html .= '<td><div style="padding: 10px;">';
+        if ($supEmp) {
+            $html .= htmlspecialchars($supEmp['employee_name']) . '<br>';
+            if ($supDesig) $html .= htmlspecialchars($supDesig['job_title_name']);
+        }
+        $html .= '</div></td>';
+        $html .= '<td><div style="padding: 10px;">' . $proposalHtml . '</div></td>';
+        $html .= '<td><div style="padding: 10px;">' . htmlspecialchars($supervisorComment['note'] ?? '') . '</div></td>';
+        $html .= '<td>' . ($supervisorComment
+            ? $renderSignature($supervisorComment['signature'] ?? '',
+                !empty($supervisorComment['approvedDate']) ? date_create($supervisorComment['approvedDate']) : null)
+            : '') . '</td>';
+        $html .= '</tr>';
+
+        // নথি উপস্থাপক — the desk that put the note up for approval.
+        $html .= '<tr>';
+        $html .= '<td class="role-cell">নথি উপস্থাপক</td>';
         $html .= '<td><div style="padding: 10px;">';
         if ($initiatorEmp) {
             $html .= htmlspecialchars($initiatorEmp['employee_name']) . '<br>';
-            if ($initiatorDesig) {
-                $html .= htmlspecialchars($initiatorDesig['job_title_name']);
-            }
+            if ($initiatorDesig) $html .= htmlspecialchars($initiatorDesig['job_title_name']);
         }
         $html .= '</div></td>';
+        $html .= '<td></td>';
         $html .= '<td><div style="padding: 10px;">' . htmlspecialchars($joiningData['adminNote']) . '</div></td>';
-        $html .= '<td>';
-        
-        if ($initiatorUser && !empty($initiatorUser['signature'])) {
-            $sig = $initiatorUser['signature'];
-            
-            // Detect image type
-            $imageType = 'image/png';
-            $decoded = @base64_decode($sig, true);
-            
-            if ($decoded !== false) {
-                $finfo = new finfo(FILEINFO_MIME_TYPE);
-                $mimeType = @$finfo->buffer($decoded);
-                
-                if ($mimeType === 'image/jpeg' || $mimeType === 'image/jpg') {
-                    $imageType = 'image/jpeg';
-                }
-                
-                $sigBase64 = $sig;
-            } else {
-                $sigBase64 = base64_encode($sig);
-                
-                $finfo = new finfo(FILEINFO_MIME_TYPE);
-                $mimeType = @$finfo->buffer($sig);
-                
-                if ($mimeType === 'image/jpeg' || $mimeType === 'image/jpg') {
-                    $imageType = 'image/jpeg';
-                }
-            }
-            
-            if (!empty($sigBase64)) {
-                $html .= '<img src="data:' . $imageType . ';base64,' . $sigBase64 . '" style="height: 60px;" /><br>';
-                $html .= '<span class="small-text">' . banglaNumber(date_format($adminNoteDate, "d.m.Y")) . '</span><br>';
-            }
-        }
-        
-        $html .= '</td>';
+        $html .= '<td>' . $renderSignature($initiatorUser['signature'] ?? '', $adminNoteDate) . '</td>';
         $html .= '</tr>';
-        
-        // Subsequent rows - All signatories
-        $sl = 1;
+
+        // নথি অনুমোদনকারী গণ — one label cell spanning every signatory row.
+        $sigCount = count($signatories);
+        $rowIndex = 0;
         foreach ($signatories as $signatory) {
-            $sl++;
-            
-            // Get signatory employee details
             $stmt = $con->prepare("SELECT * FROM employee_list WHERE id = ?");
             $stmt->bind_param("i", $signatory['signatory']);
             $stmt->execute();
             $sigEmp = $stmt->get_result()->fetch_assoc();
             $stmt->close();
-            
+
             $sigDesig = null;
             if ($sigEmp) {
                 $stmt = $con->prepare("SELECT * FROM job_title WHERE id = ?");
@@ -344,61 +412,29 @@ function generatePDFData($leaveApplicationID) {
                 $sigDesig = $stmt->get_result()->fetch_assoc();
                 $stmt->close();
             }
-            
+
             $sigNoteDate = !empty($signatory['approvedDate']) ? date_create($signatory['approvedDate']) : null;
-            
+
             $html .= '<tr>';
-            $html .= '<td>' . banglaNumber($sl) . '</td>';
+            if ($rowIndex === 0) {
+                $html .= '<td rowspan="' . $sigCount . '" class="role-cell">নথি অনুমোদনকারী গণ</td>';
+            }
             $html .= '<td><div style="padding: 10px;">';
             if ($sigEmp) {
                 $html .= htmlspecialchars($sigEmp['employee_name']) . '<br>';
-                if ($sigDesig) {
-                    $html .= htmlspecialchars($sigDesig['job_title_name']);
-                }
+                if ($sigDesig) $html .= htmlspecialchars($sigDesig['job_title_name']);
             }
             $html .= '</div></td>';
+            $html .= '<td></td>';
             $html .= '<td><div style="padding: 10px;">' . htmlspecialchars($signatory['note']) . '</div></td>';
-            $html .= '<td>';
-            
-            if (!empty($signatory['signature'])) {
-                $sig = $signatory['signature'];
-                
-                // Detect image type
-                $imageType = 'image/png';
-                $decoded = @base64_decode($sig, true);
-                
-                if ($decoded !== false) {
-                    $finfo = new finfo(FILEINFO_MIME_TYPE);
-                    $mimeType = @$finfo->buffer($decoded);
-                    
-                    if ($mimeType === 'image/jpeg' || $mimeType === 'image/jpg') {
-                        $imageType = 'image/jpeg';
-                    }
-                    
-                    $sigBase64 = $sig;
-                } else {
-                    $sigBase64 = base64_encode($sig);
-                    
-                    $finfo = new finfo(FILEINFO_MIME_TYPE);
-                    $mimeType = @$finfo->buffer($sig);
-                    
-                    if ($mimeType === 'image/jpeg' || $mimeType === 'image/jpg') {
-                        $imageType = 'image/jpeg';
-                    }
-                }
-                
-                if (!empty($sigBase64)) {
-                    $html .= '<img src="data:' . $imageType . ';base64,' . $sigBase64 . '" style="height: 60px;" /><br>';
-                    if ($sigNoteDate) {
-                        $html .= '<span class="small-text">' . banglaNumber(date_format($sigNoteDate, "d.m.Y")) . '</span><br>';
-                    }
-                }
-            }
-            
-            $html .= '</td>';
+            $html .= '<td>' . $renderSignature($signatory['signature'] ?? '', $sigNoteDate) . '</td>';
             $html .= '</tr>';
+            $rowIndex++;
         }
-        
+        if ($rowIndex === 0) {
+            $html .= '<tr><td class="role-cell">নথি অনুমোদনকারী গণ</td><td></td><td></td><td></td><td></td></tr>';
+        }
+
         $html .= '</table>';
         
         // Create PDF
