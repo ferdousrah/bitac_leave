@@ -238,6 +238,8 @@ function generatePDFData($leaveApplicationID) {
             .signature-img { height: 60px; }
             .small-text { font-size: 11px; }
             .role-cell { text-align: center; vertical-align: middle; }
+            .qr-block { margin-top: 18px; text-align: center; }
+            .qr-caption { font-size: 10px; text-align: center; }
         </style>';
         
         // Header
@@ -436,6 +438,23 @@ function generatePDFData($leaveApplicationID) {
         }
 
         $html .= '</table>';
+
+        // অফিস আদেশ QR — only once the joining is approved, because before that
+        // there is no corrected office order to open. The PDF is built by an HTTP
+        // request to this same directory, so the host and path are taken from the
+        // request rather than hard-coded; on CLI there is no host and the QR is
+        // simply left out.
+        if ((int)$joiningData['status'] === 1 && !empty($_SERVER['HTTP_HOST'])) {
+            $__scheme = (!empty($_SERVER['HTTPS']) && strtolower($_SERVER['HTTPS']) !== 'off') ? 'https' : 'http';
+            $__dir    = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '')), '/');
+            $noticeUrl = $__scheme . '://' . $_SERVER['HTTP_HOST'] . $__dir
+                       . '/corrected-office-notice.php?leaveApplicationID=' . (int)$leaveApplicationID;
+
+            $html .= '<div class="qr-block">';
+            $html .= '<barcode code="' . htmlspecialchars($noticeUrl, ENT_QUOTES) . '" type="QR" class="barcode" size="0.8" error="M" />';
+            $html .= '<div class="qr-caption">সংশোধিত অফিস আদেশ দেখতে<br>স্ক্যান করুন</div>';
+            $html .= '</div>';
+        }
         
         // Create PDF
         $mpdf = new \Mpdf\Mpdf([
