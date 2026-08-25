@@ -1413,7 +1413,7 @@ $assetURL = BASE_URL . '/vuexy-assets';
                                                 </div>
                                                 <div>
                                                     <h6 class="text-white mb-0 fw-semibold" style="font-size:0.95rem;">নোটিফিকেশন</h6>
-                                                    <small class="text-white-50" style="font-size:0.72rem;">সর্বশেষ আপডেট</small>
+                                                    <small style="font-size:0.75rem; color:rgba(255,255,255,0.85);">সর্বশেষ আপডেট</small>
                                                 </div>
                                             </div>
                                             <span class="notif-header-count" style="background:rgba(255,255,255,0.2); color:#fff; border-radius:20px; padding:3px 10px; font-size:0.72rem; font-weight:600;">০ নতুন</span>
