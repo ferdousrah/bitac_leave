@@ -646,6 +646,110 @@ $assetURL = BASE_URL . '/vuexy-assets';
             box-shadow: none !important;
         }
 
+        /* ── Third-level menu: flyout beside the sidebar ────────────────────
+           The parent submenu row keeps looking like every other submenu row;
+           hovering it opens its children in a panel pinned to the sidebar's
+           right edge. `position: fixed` on the panel is set from JS because the
+           sidebar scrolls — a purely absolute panel would scroll out of view
+           and be clipped by the sidebar's own overflow. */
+        #layout-menu.menu-vertical .menu-has-flyout > .menu-link {
+            display: flex !important;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        #layout-menu.menu-vertical .menu-has-flyout > .menu-link .menu-flyout-caret {
+            font-size: 0.95rem;
+            opacity: 0.65;
+            flex: 0 0 auto;
+            transition: transform .15s ease, opacity .15s ease;
+        }
+        #layout-menu.menu-vertical .menu-has-flyout:hover > .menu-link .menu-flyout-caret,
+        #layout-menu.menu-vertical .menu-has-flyout.flyout-open > .menu-link .menu-flyout-caret {
+            opacity: 1;
+            transform: translateX(2px);
+        }
+        #layout-menu.menu-vertical .menu-has-flyout.active > .menu-link {
+            color: var(--sb-submenu-active-color) !important;
+            background: var(--sb-submenu-active-bg) !important;
+        }
+
+        /* The panel itself. Hidden until JS pins it; never display:none, so the
+           links stay reachable by keyboard tabbing into the group. */
+        #layout-menu .menu-flyout-list {
+            position: fixed;
+            z-index: 1090;
+            min-width: 220px;
+            max-width: 300px;
+            margin: 0;
+            padding: 6px !important;
+            list-style: none;
+            background: var(--sb-bg, #3A3D53);
+            border-radius: 12px;
+            box-shadow: 0 10px 34px rgba(0,0,0,0.32);
+            opacity: 0;
+            visibility: hidden;
+            transform: translateX(-6px);
+            transition: opacity .14s ease, transform .14s ease, visibility .14s;
+            pointer-events: none;
+        }
+        #layout-menu .menu-has-flyout.flyout-open > .menu-flyout-list {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(0);
+            pointer-events: auto;
+        }
+        #layout-menu .menu-flyout-list .menu-item {
+            margin: 1px 0 !important;
+            position: static !important;
+        }
+        /* The guide line and connector belong to the sidebar's own submenu
+           styling; inside a floating panel they would hang in mid-air. */
+        #layout-menu .menu-flyout-list .menu-item::before,
+        #layout-menu .menu-flyout-list .menu-link::before,
+        #layout-menu .menu-flyout-list .menu-link::after {
+            content: none !important;
+            display: none !important;
+        }
+        #layout-menu .menu-flyout-list .menu-link {
+            display: flex !important;
+            align-items: center;
+            color: var(--sb-submenu-color) !important;
+            padding: 9px 14px !important;
+            border-radius: 8px !important;
+            font-size: var(--sb-submenu-font-size) !important;
+            font-weight: var(--sb-submenu-font-weight) !important;
+            white-space: normal;
+        }
+        #layout-menu .menu-flyout-list .menu-link:hover {
+            color: var(--sb-submenu-hover-color) !important;
+            background: var(--sb-submenu-hover-bg) !important;
+        }
+        #layout-menu .menu-flyout-list .menu-item.active > .menu-link {
+            color: var(--sb-submenu-active-color) !important;
+            background: var(--sb-submenu-active-bg) !important;
+        }
+
+        /* Touch and narrow screens have no hover, so the panel drops inline
+           under its parent instead of floating beside a sidebar that is itself
+           an overlay there. */
+        @media (max-width: 1199.98px) {
+            #layout-menu .menu-flyout-list {
+                position: static;
+                min-width: 0;
+                max-width: none;
+                box-shadow: none;
+                background: transparent;
+                padding: 2px 0 2px 14px !important;
+                transform: none;
+                display: none;
+            }
+            #layout-menu .menu-has-flyout.flyout-open > .menu-flyout-list {
+                display: block;
+                transform: none;
+            }
+        }
+
         /* Chevron arrow on expandable items */
         #layout-menu.menu-vertical .menu-toggle::after {
             color: #6b7280;

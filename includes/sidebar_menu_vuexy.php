@@ -2,6 +2,16 @@
 // Note: session and connection are already started in header.php
 // So we don't need to include them again
 
+// Third-level menus hang off submodules.parent_id. The column is optional on
+// purpose: an install that has not run the migration yet simply renders the menu
+// flat, rather than fataling on every page because the sidebar is included
+// everywhere. Nothing here creates the column — a page must never depend on
+// another page's lazy migration.
+$__subHasParent = false;
+$__pcheck = @mysqli_query($con, "SHOW COLUMNS FROM submodules LIKE 'parent_id'");
+if ($__pcheck && mysqli_num_rows($__pcheck) > 0) $__subHasParent = true;
+$__parentSel = $__subHasParent ? "sm.parent_id AS submodule_parent_id," : "0 AS submodule_parent_id,";
+
 // Securely get user information using prepared statements
 $stmt = $con->prepare("SELECT dataID, employee_id, user_group_id FROM user_list WHERE user_id = ?");
 $stmt->bind_param("s", $_SESSION['username']);
@@ -24,6 +34,7 @@ if (!empty($getUserInfoQRW['user_group_id'])) {
             sm.submodule_name,
             sm.page_link AS submodule_link,
             sm.slug AS submodule_slug,
+            " . $__parentSel . "
             sm.display_order AS submodule_display_order
         FROM group_access_permission gap
         INNER JOIN modules m ON gap.module_id = m.dataID
@@ -53,6 +64,7 @@ if (!empty($getUserInfoQRW['user_group_id'])) {
             sm.submodule_name,
             sm.page_link AS submodule_link,
             sm.slug AS submodule_slug,
+            " . $__parentSel . "
             sm.display_order AS submodule_display_order
         FROM access_permission ap
         INNER JOIN modules m ON ap.module_id = m.dataID
@@ -85,10 +97,84 @@ while ($row = $result->fetch_assoc()) {
     }
     if ($row['submodule_id']) {
         $menuData[$module_id]['submodules'][] = [
-            'submodule_name' => $row['submodule_name'],
-            'page_link' => $row['submodule_link'],
-            'slug' => $row['submodule_slug']
+            'id'              => (int)$row['submodule_id'],
+            'parent_id'       => (int)($row['submodule_parent_id'] ?? 0),
+            'submodule_name'  => $row['submodule_name'],
+            'page_link'       => $row['submodule_link'],
+            'slug'            => $row['submodule_slug'],
+            'children'        => []
         ];
+    }
+}
+
+// ── Nest third-level items under their parent submodule ──────────────────
+// A parent is a grouping row: it carries no page of its own, so it must appear
+// whenever any of its children are permitted, even when the group has no
+// permission row for the parent itself. Those parents are fetched separately
+// and slotted in at the position their display_order asks for.
+if ($__subHasParent) {
+    foreach ($menuData as $__mid => $__mod) {
+        $__flat = $__mod['submodules'];
+        if (!$__flat) continue;
+
+        $__byId = [];
+        foreach ($__flat as $__s) $__byId[$__s['id']] = $__s;
+
+        // Parents referenced by a permitted child but absent from the result set.
+        $__missing = [];
+        foreach ($__flat as $__s) {
+            if ($__s['parent_id'] > 0 && !isset($__byId[$__s['parent_id']])) {
+                $__missing[$__s['parent_id']] = true;
+            }
+        }
+        if ($__missing) {
+            $__ids = implode(',', array_map('intval', array_keys($__missing)));
+            $__pq = mysqli_query($con,
+                "SELECT dataID, parent_id, submodule_name, page_link, slug, display_order
+                 FROM submodules WHERE dataID IN ($__ids) AND deleted = 0");
+            if ($__pq) {
+                while ($__pr = mysqli_fetch_assoc($__pq)) {
+                    $__byId[(int)$__pr['dataID']] = [
+                        'id'             => (int)$__pr['dataID'],
+                        'parent_id'      => (int)$__pr['parent_id'],
+                        'submodule_name' => $__pr['submodule_name'],
+                        'page_link'      => $__pr['page_link'],
+                        'slug'           => $__pr['slug'],
+                        'children'       => [],
+                        '__order'        => (int)$__pr['display_order'],
+                    ];
+                }
+            }
+        }
+
+        // Attach children to parents, keeping the query's order within each level.
+        $__roots = [];
+        foreach ($__byId as $__id => $__s) {
+            if ($__s['parent_id'] > 0 && isset($__byId[$__s['parent_id']])) continue;
+            $__roots[$__id] = true;
+        }
+        foreach ($__byId as $__id => $__s) {
+            if ($__s['parent_id'] > 0 && isset($__byId[$__s['parent_id']])) {
+                $__byId[$__s['parent_id']]['children'][] = $__byId[$__id];
+            }
+        }
+
+        // Rebuild the level in the original order, then append any parent that
+        // was pulled in only because a child needed it.
+        $__out = [];
+        $__seen = [];
+        foreach ($__flat as $__s) {
+            if (!isset($__roots[$__s['id']])) continue;
+            if (isset($__seen[$__s['id']])) continue;
+            $__seen[$__s['id']] = true;
+            $__out[] = $__byId[$__s['id']];
+        }
+        foreach ($__byId as $__id => $__s) {
+            if (!isset($__roots[$__id]) || isset($__seen[$__id])) continue;
+            $__seen[$__id] = true;
+            $__out[] = $__s;
+        }
+        $menuData[$__mid]['submodules'] = $__out;
     }
 }
 
@@ -96,10 +182,15 @@ $menuSlug = $_GET['menuslug'] ?? $_POST['menuslug'] ?? '';
 
 // Helper function to check if a module is active
 function isModuleActive($module, $submodules, $currentSlug) {
-    // Check if any submodule is active
+    // Check if any submodule — or any third-level child — is active
     foreach ($submodules as $sub) {
         if ($sub['slug'] === $currentSlug) {
             return true;
+        }
+        foreach ($sub['children'] ?? [] as $child) {
+            if ($child['slug'] === $currentSlug) {
+                return true;
+            }
         }
     }
     // Check if module itself is active (for modules without submodules)
@@ -153,15 +244,47 @@ function buildMenuUrl($baseURL, $pageLink) {
                 </a>
                 <ul class="menu-sub">
                     <?php foreach ($module['submodules'] as $submodule): ?>
-                        <?php $isSubActive = ($submodule['slug'] === $menuSlug); ?>
-                        <li class="menu-item <?= $isSubActive ? 'active' : '' ?>">
-                            <a href="<?= buildMenuUrl($baseURL, $submodule['page_link']) ?>?menuslug=<?= $submodule['slug'] ?>" class="menu-link">
-                                <div data-i18n="<?= htmlspecialchars($submodule['submodule_name']) ?>">
-                                    <?= htmlspecialchars($submodule['submodule_name']) ?>
-                                </div>
-                                <div class="badge rounded-pill bg-danger ms-auto" id="<?= $submodule['slug'] ?>" style="display: none;">0</div>
-                            </a>
-                        </li>
+                        <?php
+                        $children    = $submodule['children'] ?? [];
+                        $isSubActive = ($submodule['slug'] === $menuSlug);
+                        $childActive = false;
+                        foreach ($children as $child) {
+                            if ($child['slug'] === $menuSlug) { $childActive = true; break; }
+                        }
+                        ?>
+                        <?php if ($children): ?>
+                            <!-- Third level: opens as a flyout beside the sidebar on hover -->
+                            <li class="menu-item menu-has-flyout <?= ($isSubActive || $childActive) ? 'active' : '' ?>">
+                                <a href="javascript:void(0);" class="menu-link menu-flyout-toggle" data-turbo="false">
+                                    <div data-i18n="<?= htmlspecialchars($submodule['submodule_name']) ?>">
+                                        <?= htmlspecialchars($submodule['submodule_name']) ?>
+                                    </div>
+                                    <i class="ti tabler-chevron-right menu-flyout-caret"></i>
+                                </a>
+                                <ul class="menu-flyout-list">
+                                    <?php foreach ($children as $child): ?>
+                                        <?php $isChildActive = ($child['slug'] === $menuSlug); ?>
+                                        <li class="menu-item <?= $isChildActive ? 'active' : '' ?>">
+                                            <a href="<?= buildMenuUrl($baseURL, $child['page_link']) ?>?menuslug=<?= $child['slug'] ?>" class="menu-link">
+                                                <div data-i18n="<?= htmlspecialchars($child['submodule_name']) ?>">
+                                                    <?= htmlspecialchars($child['submodule_name']) ?>
+                                                </div>
+                                                <div class="badge rounded-pill bg-danger ms-auto" id="<?= $child['slug'] ?>" style="display: none;">0</div>
+                                            </a>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </li>
+                        <?php else: ?>
+                            <li class="menu-item <?= $isSubActive ? 'active' : '' ?>">
+                                <a href="<?= buildMenuUrl($baseURL, $submodule['page_link']) ?>?menuslug=<?= $submodule['slug'] ?>" class="menu-link">
+                                    <div data-i18n="<?= htmlspecialchars($submodule['submodule_name']) ?>">
+                                        <?= htmlspecialchars($submodule['submodule_name']) ?>
+                                    </div>
+                                    <div class="badge rounded-pill bg-danger ms-auto" id="<?= $submodule['slug'] ?>" style="display: none;">0</div>
+                                </a>
+                            </li>
+                        <?php endif; ?>
                     <?php endforeach; ?>
 
                     <?php
@@ -220,3 +343,103 @@ function buildMenuUrl($baseURL, $pageLink) {
         </a>
     </li>
 </ul>
+
+    <!-- ── Third-level menu flyout ──────────────────────────────────────────
+         The panel is position:fixed, so its coordinates have to be written on
+         each open: the sidebar scrolls, and an absolutely-positioned panel
+         would be clipped by the sidebar's own overflow. Delegated and
+         idempotent so it survives Turbo navigation. -->
+    <script type="text/javascript">
+    (function menuFlyout() {
+        if (window.__menuFlyoutBound) return;
+        window.__menuFlyoutBound = true;
+
+        var CLOSE_DELAY = 160;   // grace period while the pointer crosses the gap
+        var closeTimer  = null;
+        var openItem    = null;
+
+        function isFloating() {
+            return window.matchMedia('(min-width: 1200px)').matches;
+        }
+
+        function place(item) {
+            var panel = item.querySelector(':scope > .menu-flyout-list');
+            var menu  = document.getElementById('layout-menu');
+            if (!panel || !menu) return;
+            if (!isFloating()) { panel.style.cssText = ''; return; }
+
+            var itemRect = item.getBoundingClientRect();
+            var menuRect = menu.getBoundingClientRect();
+
+            panel.style.left = (menuRect.right + 6) + 'px';
+            panel.style.top  = itemRect.top + 'px';
+            panel.style.bottom = 'auto';
+
+            // Flip upward when the panel would run past the viewport bottom.
+            var h = panel.offsetHeight;
+            if (itemRect.top + h > window.innerHeight - 12) {
+                var top = window.innerHeight - h - 12;
+                panel.style.top = Math.max(12, top) + 'px';
+            }
+        }
+
+        function open(item) {
+            if (openItem && openItem !== item) close(openItem);
+            clearTimeout(closeTimer);
+            openItem = item;
+            item.classList.add('flyout-open');
+            place(item);
+        }
+
+        function close(item) {
+            if (!item) return;
+            item.classList.remove('flyout-open');
+            if (openItem === item) openItem = null;
+        }
+
+        function itemFrom(target) {
+            return target && target.closest ? target.closest('.menu-has-flyout') : null;
+        }
+
+        document.addEventListener('mouseover', function (e) {
+            var item = itemFrom(e.target);
+            if (!item) return;
+            if (!isFloating()) return;   // no hover intent on touch layouts
+            open(item);
+        });
+
+        document.addEventListener('mouseout', function (e) {
+            var item = itemFrom(e.target);
+            if (!item || !isFloating()) return;
+            // Ignore moves that stay inside the same group (row -> panel).
+            if (e.relatedTarget && itemFrom(e.relatedTarget) === item) return;
+            clearTimeout(closeTimer);
+            closeTimer = setTimeout(function () { close(item); }, CLOSE_DELAY);
+        });
+
+        // Tap/click toggles, which is the only way in on touch layouts.
+        document.addEventListener('click', function (e) {
+            var toggle = e.target.closest ? e.target.closest('.menu-flyout-toggle') : null;
+            if (toggle) {
+                e.preventDefault();
+                var item = itemFrom(toggle);
+                if (!item) return;
+                if (item.classList.contains('flyout-open')) close(item);
+                else open(item);
+                return;
+            }
+            if (openItem && !itemFrom(e.target)) close(openItem);
+        });
+
+        // A pinned panel must not stay behind when the ground moves.
+        ['scroll', 'resize'].forEach(function (evt) {
+            window.addEventListener(evt, function () {
+                if (openItem) place(openItem);
+            }, true);
+        });
+
+        document.addEventListener('turbo:before-render', function () {
+            if (openItem) close(openItem);
+        });
+    })();
+    </script>
