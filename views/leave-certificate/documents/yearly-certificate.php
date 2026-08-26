@@ -96,6 +96,10 @@ if ($action === 'generate') {
 }
 
 function generatePDFData($employeeID, $year) {
+    // The access guard above already required connection.php at file scope, so
+    // the require_once below is a no-op and never binds $con inside here —
+    // which left every certificate failing with "Database connection failed".
+    global $con;
     try {
         require_once(__DIR__ . '/../../../connection.php');
         require_once(__DIR__ . '/../../../library/number_converter.php');
