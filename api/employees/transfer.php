@@ -35,8 +35,21 @@ $orderNumber     = trim($_POST['order_number']       ?? '');
 $orderDate       = trim($_POST['order_date']         ?? '');
 $reason          = trim($_POST['reason']             ?? '');
 
-// Handle attachment upload
+// Handle attachment upload. The order copy is mandatory: a transfer moves an
+// employee between centres and nothing else records the authority for it, so
+// the browser's `required` is backed up here — a hand-rolled POST must not slip
+// an undocumented transfer through.
 $attachment = null;
+if (!isset($_FILES['attachment']) || !is_uploaded_file($_FILES['attachment']['tmp_name'])) {
+    $__err = $_FILES['attachment']['error'] ?? UPLOAD_ERR_NO_FILE;
+    echo json_encode([
+        'status'  => 0,
+        'message' => ($__err === UPLOAD_ERR_INI_SIZE || $__err === UPLOAD_ERR_FORM_SIZE)
+            ? 'ফাইলটি সার্ভারের সর্বোচ্চ আকার ছাড়িয়ে গেছে'
+            : 'আদেশের কপি সংযুক্ত করা আবশ্যক',
+    ]);
+    exit;
+}
 if (isset($_FILES['attachment']) && is_uploaded_file($_FILES['attachment']['tmp_name'])) {
     $allowed = ['jpg', 'jpeg', 'png', 'pdf'];
     $ext = strtolower(pathinfo($_FILES['attachment']['name'], PATHINFO_EXTENSION));
@@ -53,6 +66,9 @@ if (isset($_FILES['attachment']) && is_uploaded_file($_FILES['attachment']['tmp_
     if (!is_dir($dir)) mkdir($dir, 0755, true);
     if (move_uploaded_file($_FILES['attachment']['tmp_name'], $dir . $unique)) {
         $attachment = $unique;
+    } else {
+        echo json_encode(['status' => 0, 'message' => 'আদেশের কপি সংরক্ষণ করা যায়নি']);
+        exit;
     }
 }
 

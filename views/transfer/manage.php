@@ -96,9 +96,9 @@ $stats = mysqli_fetch_assoc($statsRes) ?: ['total_ytd'=>0,'pending_section_count
             <a href="report.php?menuslug=<?= htmlspecialchars($_GET['menuslug'] ?? 'employee-transfer') ?>" class="btn btn-label-secondary me-2" data-turbo="true">
                 <i class="ti tabler-report me-1"></i>রিপোর্ট
             </a>
-            <button type="button" class="btn btn-primary" id="btnNewTransfer">
-                <i class="ti tabler-plus me-1"></i>নতুন বদলি
-            </button>
+            <a href="new.php?menuslug=employee-transfer-new" class="btn btn-primary" data-turbo="true">
+                <i class="ti tabler-plus me-1"></i>নতুন বদলির আদেশ
+            </a>
         <?php else: ?>
             <span class="badge bg-label-info"><i class="ti tabler-eye me-1"></i>শুধু দেখার অনুমতি</span>
         <?php endif; ?>
@@ -211,67 +211,6 @@ $stats = mysqli_fetch_assoc($statsRes) ?: ['total_ytd'=>0,'pending_section_count
 
 <?php if ($_canWrite): ?>
 <!-- New Transfer Modal -->
-<div class="modal fade" id="newTransferModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content">
-            <form id="newTransferForm" enctype="multipart/form-data">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="ti tabler-transfer me-2 text-primary"></i>নতুন বদলির আদেশ</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="বন্ধ"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="row g-3">
-                        <div class="col-12">
-                            <label class="form-label">কর্মচারী <span class="text-danger">*</span></label>
-                            <select id="modal_employee" name="dataID" class="form-select" required></select>
-                            <small class="text-muted">নাম বা আইডি দিয়ে খুঁজুন</small>
-                        </div>
-                        <div class="col-12">
-                            <div id="empCurrentBox" class="alert alert-light border d-none mb-0 py-2">
-                                <small class="text-muted">বর্তমান কেন্দ্র:</small>
-                                <span id="empCurrentCenter" class="fw-semibold ms-1">—</span>
-                            </div>
-                        </div>
-                        <div class="col-12 col-md-6">
-                            <label class="form-label">নতুন কেন্দ্র <span class="text-danger">*</span></label>
-                            <select id="modal_to_organization_id" name="to_organization_id" class="form-select" required>
-                                <option value="">— নির্বাচন করুন —</option>
-                                <?php foreach ($allCenters as $c): ?>
-                                    <option value="<?= (int)$c['id'] ?>"><?= htmlspecialchars($c['organization_name']) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="col-12 col-md-6">
-                            <label class="form-label">কার্যকর তারিখ <span class="text-danger">*</span></label>
-                            <input type="text" id="modal_transfer_date" name="transfer_date" class="form-control flatpickr-input" required placeholder="YYYY-MM-DD">
-                            <small class="text-muted">যে তারিখ থেকে বদলি কার্যকর</small>
-                        </div>
-                        <div class="col-12 col-md-6">
-                            <label class="form-label">আদেশ নম্বর</label>
-                            <input type="text" id="modal_order_number" name="order_number" class="form-control" placeholder="অফিস আদেশের নম্বর">
-                        </div>
-                        <div class="col-12 col-md-6">
-                            <label class="form-label">আদেশ তারিখ</label>
-                            <input type="text" id="modal_order_date" name="order_date" class="form-control flatpickr-input" placeholder="YYYY-MM-DD">
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label">কারণ / মন্তব্য</label>
-                            <textarea id="modal_reason" name="reason" class="form-control" rows="2" placeholder="বদলির কারণ"></textarea>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label">আদেশের কপি (JPG/PNG/PDF, সর্বোচ্চ ২ MB)</label>
-                            <input type="file" id="modal_attachment" name="attachment" class="form-control" accept=".jpg,.jpeg,.png,.pdf">
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">বাতিল</button>
-                    <button type="button" class="btn btn-primary" id="btnSubmitTransfer"><i class="ti tabler-check me-1"></i>বদলি সংরক্ষণ</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
 <?php endif; ?>
 
 <!-- Detail / History Modal -->
@@ -380,95 +319,6 @@ function initTransferPage() {
             transferDt.ajax.reload();
         });
 
-        // New transfer button
-        if (BITAC_TRANSFER.canWrite) {
-            $('#btnNewTransfer').off('click.tr').on('click.tr', function() {
-                openNewTransferModal();
-            });
-
-            // Employee select2 with AJAX — destroy previous instance first
-            // (initTransferPage can fire on ready + turbo:load + immediate, so guard against double-init)
-            if ($.fn.select2) {
-                var $modalEmp = $('#modal_employee');
-                if ($modalEmp.hasClass('select2-hidden-accessible')) {
-                    try { $modalEmp.select2('destroy'); } catch (e) {}
-                }
-                $modalEmp.select2({
-                    dropdownParent: $('#newTransferModal'),
-                    placeholder: 'নাম বা আইডি দিয়ে খুঁজুন...',
-                    allowClear: true,
-                    ajax: {
-                        url: '../../api/transfer/employee-search.php',
-                        dataType: 'json',
-                        delay: 250,
-                        data: function(p) { return { q: p.term || '' }; },
-                        processResults: function(data) {
-                            return { results: (data.items || []).map(function(it) {
-                                return {
-                                    id: it.id,
-                                    text: it.label,
-                                    current_org_id: it.current_org_id,
-                                    current_org_name: it.current_org_name
-                                };
-                            }) };
-                        }
-                    }
-                });
-
-                $('#modal_employee').off('select2:select.tr').on('select2:select.tr', function(e) {
-                    var d = e.params.data;
-                    $('#empCurrentBox').removeClass('d-none');
-                    $('#empCurrentCenter').text(d.current_org_name || '—');
-                    // Hide current center from the "to" dropdown to avoid same-center transfer
-                    $('#modal_to_organization_id option').prop('disabled', false);
-                    $('#modal_to_organization_id option[value="' + d.current_org_id + '"]').prop('disabled', true);
-                    if ($('#modal_to_organization_id').val() == d.current_org_id) {
-                        $('#modal_to_organization_id').val('').trigger('change');
-                    }
-                });
-
-                $('#modal_employee').off('select2:clear.tr').on('select2:clear.tr', function() {
-                    $('#empCurrentBox').addClass('d-none');
-                    $('#modal_to_organization_id option').prop('disabled', false);
-                });
-            }
-
-            // Submit handler — bound to button click (bypasses Turbo form interception)
-            $('#btnSubmitTransfer').off('click.tr').on('click.tr', function(e) {
-                e.preventDefault();
-                var formEl = document.getElementById('newTransferForm');
-                if (formEl && typeof formEl.checkValidity === 'function' && !formEl.checkValidity()) {
-                    formEl.reportValidity();
-                    return;
-                }
-                var $btn = $('#btnSubmitTransfer');
-                $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>সংরক্ষণ হচ্ছে...');
-                var fd = new FormData(formEl);
-                $.ajax({
-                    type: 'POST',
-                    url: '../../api/employees/transfer.php',
-                    data: fd,
-                    contentType: false,
-                    processData: false,
-                    dataType: 'json',
-                    success: function(resp) {
-                        if (resp && resp.status === 1) {
-                            $('#newTransferModal').modal('hide');
-                            Swal.fire({ title: 'সফল', text: resp.message || 'বদলি সংরক্ষণ হয়েছে', icon: 'success', confirmButtonColor: '#6c5ce7', customClass: { confirmButton: 'btn btn-primary' }, buttonsStyling: false });
-                            transferDt.ajax.reload(null, false);
-                        } else {
-                            Swal.fire({ title: 'ত্রুটি', text: (resp && resp.message) || 'বদলি সংরক্ষণ ব্যর্থ', icon: 'error', confirmButtonColor: '#dc3545', customClass: { confirmButton: 'btn btn-danger' }, buttonsStyling: false });
-                        }
-                    },
-                    error: function() {
-                        Swal.fire({ title: 'ত্রুটি', text: 'সার্ভার সংযোগ ব্যর্থ', icon: 'error', confirmButtonColor: '#dc3545', customClass: { confirmButton: 'btn btn-danger' }, buttonsStyling: false });
-                    },
-                    complete: function() {
-                        $btn.prop('disabled', false).html('<i class="ti tabler-check me-1"></i>বদলি সংরক্ষণ');
-                    }
-                });
-            });
-        }
 
         // Detail click
         $(document).off('click.trDetail').on('click.trDetail', '.btn-tr-detail', function() {
@@ -485,13 +335,6 @@ function initTransferPage() {
     }, 100);
 }
 
-function openNewTransferModal() {
-    $('#newTransferForm')[0].reset();
-    $('#modal_employee').val(null).trigger('change');
-    $('#empCurrentBox').addClass('d-none');
-    $('#modal_to_organization_id option').prop('disabled', false);
-    $('#newTransferModal').modal('show');
-}
 
     $(document).ready(function() { if ($('#transferListTable').length) initTransferPage(); });
     document.addEventListener('turbo:load', function() { if ($('#transferListTable').length) initTransferPage(); });
