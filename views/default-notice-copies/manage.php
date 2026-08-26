@@ -40,7 +40,7 @@ if ($__seedChk && (int)(mysqli_fetch_assoc($__seedChk)['c'] ?? 0) === 0) {
 }
 
 $CONTEXTS = [
-    'leave'       => ['title' => 'ছুটির আবেদন',        'icon' => 'tabler-calendar-event', 'sub' => 'ছুটির অফিস আদেশে যে অনুলিপি প্রাপকরা যোগ হবেন'],
+    'leave'       => ['title' => 'ছুটির আদেশ',         'icon' => 'tabler-calendar-event', 'sub' => 'ছুটির অফিস আদেশে যে অনুলিপি প্রাপকরা যোগ হবেন'],
     'increment'   => ['title' => 'বার্ষিক বেতন বৃদ্ধি', 'icon' => 'tabler-coin',           'sub' => 'বেতন বৃদ্ধির আদেশে যে অনুলিপি প্রাপকরা যোগ হবেন'],
     'certificate' => ['title' => 'ছুটি সনদ',            'icon' => 'tabler-certificate',    'sub' => 'ছুটির সনদে যে অনুলিপি প্রাপকরা যোগ হবেন'],
 ];
@@ -195,7 +195,7 @@ foreach ($byContext as $list) {
                     <input type="hidden" name="context" id="fld_context" value="leave">
                     <div class="mb-3">
                         <div class="alert alert-info py-2 mb-0" style="font-size:0.84rem;">
-                            <i class="ti tabler-folder me-1"></i>সেকশন: <strong id="fld_context_label">ছুটির আবেদন</strong>
+                            <i class="ti tabler-folder me-1"></i>সেকশন: <strong id="fld_context_label">ছুটির আদেশ</strong>
                         </div>
                     </div>
                     <div class="mb-3">
