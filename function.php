@@ -273,7 +273,13 @@ function monthlyLeaveSummary($employeeID, $year, $month){
  *   optional           → ['balance','spent']
  *   actualDuration     → ['total','years','months','days']
  */
-function getEmployeeLeaveInfo($employeeID) {
+/**
+ * @param string|null $asOfDate  Y-m-d to compute the balance as of; defaults to
+ *   today. Only the accrual basis moves with it — leave already taken still
+ *   counts in full, which is what the leave certificate has always asserted and
+ *   what keeps an as-of-today call identical to the dashboard.
+ */
+function getEmployeeLeaveInfo($employeeID, $asOfDate = null) {
     global $con, $casualBalance, $casualStart, $casualEnd, $optionalLBalance;
 
     // ── helpers ──────────────────────────────────────────────────────
@@ -383,7 +389,7 @@ function getEmployeeLeaveInfo($employeeID) {
     // ── employee joining date → service duration ──────────────────────
     $empQ  = mysqli_query($con, "SELECT joining_date FROM employee_list WHERE id='$employeeID'");
     $emp   = mysqli_fetch_assoc($empQ);
-    $today = date('Y-m-d');
+    $today = $asOfDate ?: date('Y-m-d');
 
     if (!empty($emp['joining_date'])) {
         $diff = abs(strtotime($today) - strtotime($emp['joining_date']));
@@ -420,7 +426,7 @@ function getEmployeeLeaveInfo($employeeID) {
     $optionalCredit = 0;
     $preApprovalTbl = mysqli_query($con, "SHOW TABLES LIKE 'optional_leave_pre_approval'");
     if ($preApprovalTbl && mysqli_num_rows($preApprovalTbl) > 0) {
-        $curYear = (int)date('Y');
+        $curYear = (int)date('Y', strtotime($today));
         $creditQ = mysqli_query($con,
             "SELECT COALESCE(SUM(requested_days), 0) AS credit
              FROM optional_leave_pre_approval

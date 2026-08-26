@@ -128,72 +128,6 @@ $casualStart = $incrementYear . '-01-01';
 $casualEnd = $incrementYear . '-12-31';
 
 // Function to calculate leave for an employee
-function calculateEmployeeLeave($con, $empID, $todayDate, $casualStart, $casualEnd) {
-
-    $getEmployeeQ = mysqli_query($con, "SELECT * FROM employee_list WHERE id='$empID'");
-    $empInfo = mysqli_fetch_assoc($getEmployeeQ);
-
-    $getPrevLeaveHistory = mysqli_query($con, "SELECT * FROM previous_leave_deduction WHERE employeeID='$empID' AND isApproved=1");
-    $prevLeaveHistory = mysqli_fetch_assoc($getPrevLeaveHistory);
-
-    $calculateFullAvgQ = mysqli_query($con, "SELECT SUM(leaveDeduction) as totalFullLDeduction FROM leave_deduction_history WHERE employeeID='$empID' AND leaveID='1' AND isApproved=1");
-    $fullAvgDeduction = mysqli_fetch_assoc($calculateFullAvgQ);
-
-    $calculateHalfAvgQ = mysqli_query($con, "SELECT SUM(leaveDeduction) as totalLHalfDeduction FROM leave_deduction_history WHERE employeeID='$empID' AND leaveID='2' AND isApproved=1");
-    $halfAvgDeduction = mysqli_fetch_assoc($calculateHalfAvgQ);
-
-    $calculateWPAvgQ = mysqli_query($con, "SELECT SUM(leaveDeduction) as totalWPDeduction FROM leave_deduction_history WHERE employeeID='$empID' AND leaveID='4' AND isApproved=1");
-    $wpDeduction = mysqli_fetch_assoc($calculateWPAvgQ);
-
-    $calculateExOrLManualQ = mysqli_query($con, "SELECT SUM(leaveDeduction) as totalExODeduction FROM leave_deduction_history WHERE employeeID='$empID' AND leaveID='10' AND isApproved=1");
-    $exOrDeduction = mysqli_fetch_assoc($calculateExOrLManualQ);
-
-    $getTotalLWioutPayQ = mysqli_query($con, "SELECT SUM(approvedDays) as totalLWithoutPay FROM leave_applications WHERE status=1 AND applicantID='$empID' AND leaveTypeInTwo='4'");
-    $totalWithoutPayApps = mysqli_fetch_assoc($getTotalLWioutPayQ);
-
-    $getTotalExtraOrdinaryQ = mysqli_query($con, "SELECT SUM(approvedDays) as totalExorLeave FROM leave_applications WHERE status=1 AND applicantID='$empID' AND leaveTypeInTwo='10'");
-    $totalExtraOrdinary = mysqli_fetch_assoc($getTotalExtraOrdinaryQ);
-
-    $totalWithoutPay = (($totalWithoutPayApps['totalLWithoutPay'] ?? 0) + ($prevLeaveHistory['leaveWithoutPay'] ?? 0) + ($wpDeduction['totalWPDeduction'] ?? 0));
-
-    $totalExtraOrdinaryLeave = (($totalExtraOrdinary['totalExorLeave'] ?? 0) + ($prevLeaveHistory['extraOrdinaryLeave'] ?? 0) + ($exOrDeduction['totalExODeduction'] ?? 0));
-
-    $diff = abs(strtotime($todayDate) - strtotime($empInfo['joining_date']));
-    $days = round($diff / (60 * 60 * 24));
-
-    $days = $days - (($totalWithoutPayApps['totalLWithoutPay'] ?? 0) + ($prevLeaveHistory['leaveWithoutPay'] ?? 0) + ($wpDeduction['totalWPDeduction'] ?? 0) + ($totalExtraOrdinary['totalExorLeave'] ?? 0) + ($prevLeaveHistory['extraOrdinaryLeave'] ?? 0) + ($exOrDeduction['totalExODeduction'] ?? 0));
-
-    // Full average salary leave
-    $fullAvgSalLeave = floor($days / 11);
-    if (fmod($days, 11) >= 6) {
-        $fullAvgSalLeave++;
-    }
-
-    $getTotalFullAvgUsedQ = mysqli_query($con, "SELECT SUM(approvedDays) as totalAvgSal FROM leave_applications WHERE status=1 AND applicantID='$empID' AND leaveTypeInTwo='1'");
-    $totalFullAvgUsed = mysqli_fetch_assoc($getTotalFullAvgUsedQ);
-
-    $totalAvgSalVugkrito = ($prevLeaveHistory['avgSalary'] ?? 0) + ($totalFullAvgUsed['totalAvgSal'] ?? 0) + ($fullAvgDeduction['totalFullLDeduction'] ?? 0);
-    $restAvgSalLeave = $fullAvgSalLeave - $totalAvgSalVugkrito;
-
-    // Half average salary leave
-    $halfAvgSalLeave = floor($days / 12);
-    if (fmod($days, 12) >= 6) {
-        $halfAvgSalLeave++;
-    }
-
-    $getTotalHalfAvgUsedQ = mysqli_query($con, "SELECT SUM(approvedDays)*2 as totalHalfAvgSal FROM leave_applications WHERE status=1 AND applicantID='$empID' AND leaveTypeInTwo='2'");
-    $totalHalfAvgUsed = mysqli_fetch_assoc($getTotalHalfAvgUsedQ);
-
-    $totalHalfAvgSalVugkrito = ($prevLeaveHistory['halfAvgSalary'] ?? 0) + ($totalHalfAvgUsed['totalHalfAvgSal'] ?? 0) + ($halfAvgDeduction['totalLHalfDeduction'] ?? 0);
-    $restHalfAvgSalLeave = $halfAvgSalLeave - $totalHalfAvgSalVugkrito;
-
-    return array(
-        'fullAvgSalaryInDays' => $restAvgSalLeave,
-        'halfSalaryInDays' => $restHalfAvgSalLeave,
-        'withoutSalaryInDays' => $totalWithoutPay
-    );
-}
-
 // Function to generate certificate
 function generateCertificate($con, $empID, $incrementYear, $certificateDateFormatted, $noticeDateFormatted, $signatory, $signatoryDesignation, $signatoryCenterID, $creationDate, $copyToArray, $casualStart, $casualEnd) {
 
@@ -208,7 +142,15 @@ function generateCertificate($con, $empID, $incrementYear, $certificateDateForma
     $centerID = $empInfo['organization_id'];
     $memorialNo = $empInfo['memorialNo'] ?? '';
 
-    $leaveData = calculateEmployeeLeave($con, $empID, $certificateDateFormatted, $casualStart, $casualEnd);
+    // Same figures the dashboard shows: one implementation, no second copy to
+    // drift. Computed as of the certificate's own date, so re-issuing a
+    // back-dated certificate reproduces the figures it carried.
+    $__info = getEmployeeLeaveInfo($empID, $certificateDateFormatted);
+    $leaveData = [
+        'fullAvgSalaryInDays' => (int)$__info['fullAvgBalance']['total'],
+        'halfSalaryInDays'    => (int)$__info['halfAvgBalance']['total'],
+        'withoutSalaryInDays' => (int)$__info['withoutPay']['total'],
+    ];
 
     $checkExistQ = mysqli_query($con, "SELECT leaveSummaryID FROM yearly_leave_summary WHERE employeeID='$empID' AND year='$incrementYear'");
 
