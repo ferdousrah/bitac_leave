@@ -380,6 +380,23 @@ function loadContent() {
                 else       $badge.text('0').css('display', 'none');
             });
 
+            // A third-level group is collapsed until hovered, so its parent row
+            // carries the sum of its children — otherwise pending work sits
+            // inside a flyout nobody has a reason to open. Summed from the
+            // rendered badges rather than a slug list, so any future group
+            // works without wiring.
+            $('.menu-has-flyout').each(function() {
+                var sum = 0;
+                $(this).find('.menu-flyout-list .badge').each(function() {
+                    if ($(this).css('display') === 'none') return;
+                    sum += parseInt($(this).text(), 10) || 0;
+                });
+                var $t = $(this).find('[data-flyout-total]').first();
+                if (!$t.length) return;
+                if (sum > 0) $t.text(sum).css('display', 'inline');
+                else         $t.text('0').css('display', 'none');
+            });
+
             // Aggregate on the parent Leave module badge
             var total = parseInt(resp.total || 0, 10);
             if (total > 0) $('#totalTask').text(total).css('display', 'inline');

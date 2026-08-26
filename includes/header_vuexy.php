@@ -658,6 +658,12 @@ $assetURL = BASE_URL . '/vuexy-assets';
             justify-content: space-between;
             gap: 8px;
         }
+        /* The aggregate count sits between the label and the caret; ms-auto on
+           the badge already pushes the pair to the right edge. */
+        #layout-menu.menu-vertical .menu-has-flyout > .menu-link .menu-flyout-total {
+            flex: 0 0 auto;
+            margin-left: auto;
+        }
         #layout-menu.menu-vertical .menu-has-flyout > .menu-link .menu-flyout-caret {
             font-size: 0.95rem;
             opacity: 0.65;

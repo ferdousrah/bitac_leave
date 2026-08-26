@@ -259,6 +259,7 @@ function buildMenuUrl($baseURL, $pageLink) {
                                     <div data-i18n="<?= htmlspecialchars($submodule['submodule_name']) ?>">
                                         <?= htmlspecialchars($submodule['submodule_name']) ?>
                                     </div>
+                                    <div class="badge rounded-pill bg-danger ms-auto menu-flyout-total" data-flyout-total style="display: none;">0</div>
                                     <i class="ti tabler-chevron-right menu-flyout-caret"></i>
                                 </a>
                                 <ul class="menu-flyout-list">
