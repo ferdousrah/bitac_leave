@@ -52,8 +52,31 @@ $certificateDate = isset($_POST['certificateDate']) ? mysqli_real_escape_string(
 $noticeDate = isset($_POST['noticeDate']) ? mysqli_real_escape_string($con, $_POST['noticeDate']) : '';
 $employeeID = isset($_POST['employeeID']) ? mysqli_real_escape_string($con, $_POST['employeeID']) : '';
 $signatoryID = isset($_POST['signatoryID']) ? mysqli_real_escape_string($con, $_POST['signatoryID']) : '';
-$copyToArray = isset($_POST['copyTo']) ? $_POST['copyTo'] : array();
-$serialArray = isset($_POST['serial']) ? $_POST['serial'] : array();
+// The অনুলিপি table posts parallel arrays, one entry per row: kind (emp|label),
+// the employee id or the fixed label, and the অনুক্রম the row prints at.
+$copyKindArr   = isset($_POST['copyKind'])   ? (array)$_POST['copyKind']   : array();
+$copyEmpArr    = isset($_POST['copyEmp'])    ? (array)$_POST['copyEmp']    : array();
+$copyLabelArr  = isset($_POST['copyLabel'])  ? (array)$_POST['copyLabel']  : array();
+$copySerialArr = isset($_POST['copySerial']) ? (array)$_POST['copySerial'] : array();
+
+$copyRows = array();
+foreach ($copyKindArr as $__i => $__kind) {
+    $__serial = (int)($copySerialArr[$__i] ?? ($__i + 1));
+    if ($__kind === 'label') {
+        $__label = trim((string)($copyLabelArr[$__i] ?? ''));
+        if ($__label === '') continue;
+        $copyRows[] = ['kind' => 'label', 'employeeID' => 0, 'label' => $__label, 'serial' => $__serial];
+    } else {
+        $__emp = (int)($copyEmpArr[$__i] ?? 0);
+        if ($__emp <= 0) continue;   // a row left unpicked is simply skipped
+        $copyRows[] = ['kind' => 'emp', 'employeeID' => $__emp, 'label' => '', 'serial' => $__serial];
+    }
+}
+usort($copyRows, function ($a, $b) { return $a['serial'] <=> $b['serial']; });
+
+// Employee ids still have to pass the centre check below.
+$copyToArray = array();
+foreach ($copyRows as $__r) if ($__r['kind'] === 'emp') $copyToArray[] = $__r['employeeID'];
 
 // Validate required fields
 if (empty($certificateDate)) {
@@ -129,7 +152,7 @@ $casualEnd = $incrementYear . '-12-31';
 
 // Function to calculate leave for an employee
 // Function to generate certificate
-function generateCertificate($con, $empID, $incrementYear, $certificateDateFormatted, $noticeDateFormatted, $signatory, $signatoryDesignation, $signatoryCenterID, $creationDate, $copyToArray, $casualStart, $casualEnd) {
+function generateCertificate($con, $empID, $incrementYear, $certificateDateFormatted, $noticeDateFormatted, $signatory, $signatoryDesignation, $signatoryCenterID, $creationDate, $copyRows, $casualStart, $casualEnd) {
 
     $getEmpQ = mysqli_query($con, "SELECT * FROM employee_list WHERE id='$empID'");
     $empInfo = mysqli_fetch_assoc($getEmpQ);
@@ -195,21 +218,27 @@ function generateCertificate($con, $empID, $incrementYear, $certificateDateForma
         $leaveSummaryID = mysqli_insert_id($con);
     }
 
-    // Insert copy-to records
-    if (!empty($copyToArray) && array_filter($copyToArray)) {
-        foreach ($copyToArray as $copyToEmpID) {
-            if (!empty($copyToEmpID)) {
-                $getCopyToQ = mysqli_query($con, "SELECT * FROM employee_list WHERE id='$copyToEmpID'");
-                $copyToInfo = mysqli_fetch_assoc($getCopyToQ);
-
-                if ($copyToInfo) {
-                    mysqli_query($con, "INSERT INTO leaveSummary_copy
-                        (leaveSummaryID, copyTo, designation, centerID)
-                        VALUES
-                        ('$leaveSummaryID', '$copyToEmpID', '{$copyToInfo['designation']}', '{$copyToInfo['organization_id']}')");
-                }
-            }
+    // Insert copy-to records, in the order the form put them in. A label row
+    // carries no employee; an employee row resolves designation and centre so
+    // the certificate can print them without a second lookup.
+    foreach ($copyRows as $__r) {
+        $__serial = (int)$__r['serial'];
+        if ($__r['kind'] === 'label') {
+            $__lbl = mysqli_real_escape_string($con, $__r['label']);
+            mysqli_query($con, "INSERT INTO leaveSummary_copy
+                (leaveSummaryID, copyTo, label, designation, centerID, serial)
+                VALUES ('$leaveSummaryID', 0, '$__lbl', 0, 0, $__serial)");
+            continue;
         }
+
+        $__emp = (int)$__r['employeeID'];
+        $getCopyToQ = mysqli_query($con, "SELECT * FROM employee_list WHERE id='$__emp'");
+        $copyToInfo = mysqli_fetch_assoc($getCopyToQ);
+        if (!$copyToInfo) continue;
+
+        mysqli_query($con, "INSERT INTO leaveSummary_copy
+            (leaveSummaryID, copyTo, label, designation, centerID, serial)
+            VALUES ('$leaveSummaryID', '$__emp', NULL, '{$copyToInfo['designation']}', '{$copyToInfo['organization_id']}', $__serial)");
     }
 
     return true;
@@ -222,7 +251,7 @@ try {
         $totalCount = mysqli_num_rows($getAllEmployeeQ);
 
         while ($empRow = mysqli_fetch_array($getAllEmployeeQ)) {
-            if (generateCertificate($con, $empRow['id'], $incrementYear, $certificateDateFormatted, $noticeDateFormatted, $signatory, $signatoryDesignation, $signatoryCenterID, $creationDate, $copyToArray, $casualStart, $casualEnd)) {
+            if (generateCertificate($con, $empRow['id'], $incrementYear, $certificateDateFormatted, $noticeDateFormatted, $signatory, $signatoryDesignation, $signatoryCenterID, $creationDate, $copyRows, $casualStart, $casualEnd)) {
                 $successCount++;
             }
         }
@@ -240,7 +269,7 @@ try {
             echo json_encode(['status' => 0, 'message' => 'সার্টিফিকেট তৈরি করতে ব্যর্থ হয়েছে!']);
         }
     } else {
-        if (generateCertificate($con, $employeeID, $incrementYear, $certificateDateFormatted, $noticeDateFormatted, $signatory, $signatoryDesignation, $signatoryCenterID, $creationDate, $copyToArray, $casualStart, $casualEnd)) {
+        if (generateCertificate($con, $employeeID, $incrementYear, $certificateDateFormatted, $noticeDateFormatted, $signatory, $signatoryDesignation, $signatoryCenterID, $creationDate, $copyRows, $casualStart, $casualEnd)) {
             if (function_exists('audit_log')) {
                 audit_log('leave_certificate_generated', [
                     'target_type' => 'yearly_leave_summary',

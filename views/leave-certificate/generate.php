@@ -23,6 +23,16 @@ $_orgScopeEL    = $_seeAllCenters ? '' : ' AND employee_list.organization_id = '
 $getAllEmployeeQ    = mysqli_query($con, "SELECT * FROM employee_list WHERE (employment_status=1 OR employment_status=2) AND pending_section_assignment=0 $_orgScope ORDER BY employee_name");
 $getAllCopytoListQ  = mysqli_query($con, "SELECT * FROM employee_list WHERE 1=1 $_orgScope ORDER BY employee_name");
 $getAllCopytoListQ2 = mysqli_query($con, "SELECT * FROM employee_list WHERE 1=1 $_orgScope ORDER BY employee_name");
+// The অনুলিপি table below picks employees; the fixed-text recipients from
+// কনফিগারেশন → ডিফল্ট অনুলিপি cannot live in it (leaveSummary_copy stores an
+// employee id). They are merged into the certificate at print time, so list them
+// here as well — otherwise someone who configured one sees no sign of it and
+// adds it again by hand.
+require_once(__DIR__ . '/../../includes/default-notice-copies.php');
+// {center} is left as-is: it resolves per employee when the certificate prints,
+// and this form can cover employees from several centres at once.
+$__defaultCopyLabels = default_notice_labels($con, 'certificate', '{center}');
+
 $getSignatoryListQ  = mysqli_query($con, "SELECT employee_list.*, job_title.job_title_name FROM employee_list
     INNER JOIN job_title ON employee_list.designation = job_title.id
     WHERE (employment_status=1 OR employment_status=2) AND employee_list.pending_section_assignment=0 $_orgScopeEL ORDER BY employee_id ASC");
@@ -145,47 +155,114 @@ function Bengali_DTN($NRS){
                 <div class="settings-section-header">
                     <span class="settings-section-icon"><i class="ti tabler-copy"></i></span>
                     <h5 class="settings-section-title">অনুলিপি</h5>
+                    <a href="../../views/default-notice-copies/manage.php?menuslug=default-notice-copies"
+                       class="ms-auto small text-decoration-none" data-turbo="true">
+                        <i class="ti tabler-settings me-1"></i>ডিফল্ট অনুলিপি সম্পাদনা
+                    </a>
+                </div>
+
+                <div class="text-muted small mb-2" style="font-size:0.78rem;">
+                    <i class="ti tabler-info-circle me-1"></i>বাম দিকের <i class="ti tabler-grip-vertical"></i> আইকন ধরে সারি টেনে (drag) নতুন ক্রমে সাজানো যাবে অথবা সরাসরি অনুক্রম নম্বর সম্পাদনা করা যাবে।
                 </div>
 
                 <div class="table-responsive mb-3">
-                    <table id="tbl" class="table modern-leave-table align-middle" style="width:100%">
+                    <table class="table table-bordered" id="copyToTable">
                         <thead>
                             <tr>
-                                <th class="text-center" style="width:80px;">ক্রমিক</th>
-                                <th>কর্মকর্তা</th>
-                                <th class="text-center" style="width:160px;">সিরিয়াল</th>
+                                <th width="40" class="text-center">—</th>
+                                <th width="70" class="text-center">ক্রমিক</th>
+                                <th>প্রাপক</th>
+                                <th width="120" class="text-center">অনুক্রম</th>
+                                <th width="60" class="text-center">—</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <tr id='addr0'>
-                                <td class='text-center'><span class="serial-num">1</span></td>
+                        <tbody id="copyToBody">
+                            <?php
+                            // Defaults are seeded as ordinary rows, so they can be
+                            // reordered or dropped for one certificate without
+                            // touching the configured list. {center} stays literal:
+                            // this form can cover several centres at once, and the
+                            // document resolves it per employee.
+                            $__seedSerial = 0;
+                            foreach ($__defaultCopyLabels as $__lbl):
+                                $__seedSerial++;
+                            ?>
+                            <tr style="background:#f7f6ff;">
+                                <td class="text-center drag-handle" style="cursor:grab;color:#8a90a6;" title="টেনে সরান">
+                                    <i class="ti tabler-grip-vertical"></i>
+                                </td>
+                                <td class="text-center row-serial"><?= $__seedSerial ?></td>
                                 <td>
-                                    <select class="copy-select-row" style="width: 100%;" name="copyTo[]">
-                                        <option value=''>-- নির্বাচন করুন --</option>
+                                    <span class="d-inline-flex align-items-center gap-2">
+                                        <i class="ti tabler-pin text-primary"></i>
+                                        <?= htmlspecialchars($__lbl) ?>
+                                    </span>
+                                    <span class="badge bg-label-secondary ms-2" style="font-size:0.65rem;">নির্ধারিত</span>
+                                    <input type="hidden" name="copyKind[]"  value="label">
+                                    <input type="hidden" name="copyLabel[]" value="<?= htmlspecialchars($__lbl) ?>">
+                                    <input type="hidden" name="copyEmp[]"   value="0">
+                                </td>
+                                <td class="text-center">
+                                    <input type="number" class="form-control text-center" name="copySerial[]" value="<?= $__seedSerial ?>" min="1">
+                                </td>
+                                <td class="text-center">
+                                    <button type="button" class="btn btn-sm btn-icon btn-label-danger row-delete" title="সারি মুছুন">
+                                        <i class="ti tabler-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+
+                            <tr>
+                                <td class="text-center drag-handle" style="cursor:grab;color:#8a90a6;" title="টেনে সরান">
+                                    <i class="ti tabler-grip-vertical"></i>
+                                </td>
+                                <td class="text-center row-serial"><?= $__seedSerial + 1 ?></td>
+                                <td>
+                                    <select class="form-select copy-to-select" name="copyEmp[]">
+                                        <option value="">-- নির্বাচন করুন --</option>
                                         <?php while($empRow = mysqli_fetch_array($getAllCopytoListQ)): ?>
                                         <option value='<?php echo $empRow['id']; ?>'><?php echo Bengali_DTN($empRow['employee_id']).' - '.$empRow['employee_name']; ?></option>
                                         <?php endwhile; ?>
                                     </select>
+                                    <input type="hidden" name="copyKind[]"  value="emp">
+                                    <input type="hidden" name="copyLabel[]" value="">
                                 </td>
-                                <td>
-                                    <input type="number" class="form-control text-center" name="serial[]" value="1" />
+                                <td class="text-center">
+                                    <input type="number" class="form-control text-center" name="copySerial[]" value="<?= $__seedSerial + 1 ?>" min="1">
+                                </td>
+                                <td class="text-center">
+                                    <button type="button" class="btn btn-sm btn-icon btn-label-danger row-delete" title="সারি মুছুন">
+                                        <i class="ti tabler-trash"></i>
+                                    </button>
                                 </td>
                             </tr>
-                            <tr id='addr2'></tr>
                         </tbody>
                     </table>
                 </div>
 
-                <div class="row mb-3">
-                    <div class="col-12 text-end">
-                        <button type="button" id="add_row" class="btn btn-sm btn-label-success me-2">
-                            <i class="ti tabler-plus me-1"></i>সারি যোগ করুন
-                        </button>
-                        <button type="button" id="delete_row" class="btn btn-sm btn-label-danger">
-                            <i class="ti tabler-trash me-1"></i>সারি মুছুন
-                        </button>
-                    </div>
+                <div class="d-flex gap-2 mb-2 flex-wrap">
+                    <button type="button" class="btn btn-sm btn-label-primary" id="addRow">
+                        <i class="ti tabler-plus me-1"></i>কর্মকর্তা সারি যোগ করুন
+                    </button>
+                    <button type="button" class="btn btn-sm btn-label-secondary" id="reseqRows" title="অনুক্রম ইনপুট অনুযায়ী সারি সাজান">
+                        <i class="ti tabler-arrows-sort me-1"></i>অনুক্রম অনুযায়ী সাজান
+                    </button>
                 </div>
+
+                <style>
+                    #copyToBody tr.ui-sortable-helper {
+                        background: #fff !important;
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    }
+                    #copyToBody .drag-handle:hover { color: #6c5ce7 !important; }
+                    #copyToBody .drag-handle:active { cursor: grabbing !important; }
+                    .copy-drop-placeholder {
+                        background: #eef0f8;
+                        height: 46px;
+                        border: 2px dashed #b9b0f4;
+                    }
+                </style>
             </div>
 
             <!-- Footer Actions -->
@@ -261,7 +338,7 @@ function initRowSelect2($select) {
 // After footer's global Select2 init has run, re-init the copy-table row selects
 // without dropdownParent so they float above the table sticky header.
 function fixCopyRowSelect2() {
-    $('#tbl tbody select.copy-select-row').each(function() {
+    $('#copyToBody select.copy-to-select').each(function() {
         var $sel = $(this);
         try {
             if ($sel.hasClass('select2-hidden-accessible')) {
@@ -288,29 +365,75 @@ $(document).ready(function() {
     }
 
     // The two main selects (employeeID, signatoryID) carry .select2 class — handled by footer's global init.
-    // Copy-table row selects use .copy-select-row and need re-init for proper dropdown positioning.
+    // Copy-table row selects use .copy-to-select and need re-init for proper dropdown positioning.
     setTimeout(fixCopyRowSelect2, 50);
 
-    var i = $('table tr').length;
+    function buildEmpOptions() {
+        return "<option value=''>-- নির্বাচন করুন --</option>" +
+            "<?php while($cRow2 = mysqli_fetch_array($getAllCopytoListQ2)){ ?><option value='<?php echo $cRow2['id']; ?>'><?php echo Bengali_DTN($cRow2['employee_id']).' - '.$cRow2['employee_name']; ?></option><?php } ?>";
+    }
 
-    $("#add_row").on('click', function() {
-        i++;
-        var html = '<tr>';
-        html += "<td class='text-center'><span class='serial-num'>" + (i - 2) + "</span></td>";
-        html += "<td><select class='copy-select-row copy-select-row-" + i + "' style='width:100%;' name='copyTo[]' id='copyTo_" + i + "'><option value=''>-- নির্বাচন করুন --</option>";
-        html += "<?php while($cRow2 = mysqli_fetch_array($getAllCopytoListQ2)){ ?><option value='<?php echo $cRow2['id']; ?>'><?php echo Bengali_DTN($cRow2['employee_id']).' - '.$cRow2['employee_name']; ?></option><?php } ?>";
-        html += "</select></td>";
-        html += "<td><input type='number' name='serial[]' id='serial_" + i + "' class='form-control text-center' value='" + (i - 2) + "' /></td>";
-        html += '</tr>';
-        $('#tbl tbody').append(html);
-        initRowSelect2($('.copy-select-row-' + i));
+    // ক্রমিক is display only; the অনুক্রম input is what the certificate orders by.
+    function reIndex() {
+        $('#copyToBody tr').each(function (i) {
+            $(this).find('.row-serial').text(i + 1);
+        });
+    }
+
+    $('#addRow').on('click', function () {
+        var maxSerial = 0;
+        $('#copyToBody input[name="copySerial[]"]').each(function () {
+            var v = parseInt($(this).val(), 10);
+            if (!isNaN(v) && v > maxSerial) maxSerial = v;
+        });
+        var nextSerial = maxSerial + 1;
+        var $row = $('<tr>' +
+            '<td class="text-center drag-handle" style="cursor:grab;color:#8a90a6;" title="টেনে সরান"><i class="ti tabler-grip-vertical"></i></td>' +
+            '<td class="text-center row-serial"></td>' +
+            '<td>' +
+                '<select class="form-select copy-to-select" name="copyEmp[]">' + buildEmpOptions() + '</select>' +
+                '<input type="hidden" name="copyKind[]"  value="emp">' +
+                '<input type="hidden" name="copyLabel[]" value="">' +
+            '</td>' +
+            '<td class="text-center"><input type="number" class="form-control text-center" name="copySerial[]" value="' + nextSerial + '" min="1"></td>' +
+            '<td class="text-center"><button type="button" class="btn btn-sm btn-icon btn-label-danger row-delete" title="সারি মুছুন"><i class="ti tabler-trash"></i></button></td>' +
+            '</tr>');
+        $('#copyToBody').append($row);
+        initRowSelect2($row.find('.copy-to-select'));
+        reIndex();
     });
 
-    $("#delete_row").click(function() {
-        var rowCount = $('#tbl tbody tr').length;
-        if (rowCount > 2) {
-            $("#tbl tbody tr:last").remove();
-        } else {
+    // Drag to reorder; on drop the অনুক্রম inputs are renumbered 1..N in the new
+    // visual order, which is what the certificate prints by.
+    if ($.fn.sortable) {
+        $('#copyToBody').sortable({
+            handle: '.drag-handle',
+            axis: 'y',
+            placeholder: 'copy-drop-placeholder',
+            forcePlaceholderSize: true,
+            helper: function (e, tr) {
+                // Preserve column widths while dragging (default helper collapses cells)
+                var $originals = tr.children();
+                var $helper = tr.clone();
+                $helper.children().each(function (i) {
+                    $(this).width($originals.eq(i).outerWidth());
+                });
+                return $helper;
+            },
+            start: function () {
+                $('.copy-to-select').select2('close');
+            },
+            update: function () {
+                $('#copyToBody tr').each(function (i) {
+                    $(this).find('input[name="copySerial[]"]').val(i + 1);
+                });
+                reIndex();
+            }
+        }).disableSelection();
+    }
+
+    $(document).on('click', '#copyToBody .row-delete', function () {
+        if ($('#copyToBody tr').length <= 1) {
             Swal.fire({
                 title: 'সতর্কতা',
                 text: 'কমপক্ষে একটি সারি থাকতে হবে',
@@ -319,7 +442,22 @@ $(document).ready(function() {
                 customClass: { confirmButton: 'btn btn-warning' },
                 buttonsStyling: false
             });
+            return;
         }
+        $(this).closest('tr').remove();
+        reIndex();
+    });
+
+    $('#reseqRows').on('click', function () {
+        var $rows = $('#copyToBody tr').toArray();
+        $rows.sort(function (a, b) {
+            var av = parseInt($(a).find('input[name="copySerial[]"]').val(), 10) || 0;
+            var bv = parseInt($(b).find('input[name="copySerial[]"]').val(), 10) || 0;
+            return av - bv;
+        });
+        var $body = $('#copyToBody');
+        $rows.forEach(function (r) { $body.append(r); });
+        reIndex();
     });
 
     // Form submission (delegated for Turbo survival)
@@ -348,7 +486,7 @@ $(document).ready(function() {
                         buttonsStyling: false
                     }).then(function() {
                         $('#form')[0].reset();
-                        $('#employeeID, #signatoryID, #tbl tbody select').val(null).trigger('change');
+                        $('#employeeID, #signatoryID, #copyToBody select').val(null).trigger('change');
                     });
                 } else {
                     Swal.fire({

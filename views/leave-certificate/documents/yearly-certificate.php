@@ -202,7 +202,11 @@ function generatePDFData($employeeID, $year) {
         }
 
         // Get copy-to list
-        $stmt = $con->prepare("SELECT * FROM leaveSummary_copy WHERE leaveSummaryID = ?");
+        $__hasCopySerial = false;
+        $__cchk = @mysqli_query($con, "SHOW COLUMNS FROM leaveSummary_copy LIKE 'serial'");
+        if ($__cchk && mysqli_num_rows($__cchk) > 0) $__hasCopySerial = true;
+        $__copyOrder = $__hasCopySerial ? ' ORDER BY serial ASC, dataID ASC' : ' ORDER BY dataID ASC';
+        $stmt = $con->prepare("SELECT * FROM leaveSummary_copy WHERE leaveSummaryID = ?" . $__copyOrder);
         $stmt->bind_param("i", $leaveSummary['leaveSummaryID']);
         $stmt->execute();
         $copyToList = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -439,10 +443,18 @@ function generatePDFData($employeeID, $year) {
         $html .= '</td>';
         $html .= '</tr></table>';
 
-        // Copy-to list — fixed-text recipients from কনফিগারেশন → ডিফল্ট অনুলিপি
-        // (ছুটি সনদ) first, then the per-employee entries.
+        // Copy-to list. Certificates issued from the form carry their fixed-text
+        // recipients as rows of their own, in the order the operator arranged —
+        // so the configured defaults are only prepended for certificates issued
+        // before that was possible, which keeps their output unchanged.
         require_once(__DIR__ . '/../../../includes/default-notice-copies.php');
-        $defaultLabels = default_notice_labels($con, 'certificate', $orgData['organization_name'] ?? '');
+        $__hasStoredLabels = false;
+        foreach ($copyToList as $__c) {
+            if (trim((string)($__c['label'] ?? '')) !== '') { $__hasStoredLabels = true; break; }
+        }
+        $defaultLabels = $__hasStoredLabels
+            ? []
+            : default_notice_labels($con, 'certificate', $orgData['organization_name'] ?? '');
 
         if (!empty($copyToList) || !empty($defaultLabels)) {
             $html .= '<p>&nbsp;</p>';
@@ -454,6 +466,15 @@ function generatePDFData($employeeID, $year) {
                 $copySL++;
             }
             foreach ($copyToList as $copy) {
+                $__lbl = trim((string)($copy['label'] ?? ''));
+                if ($__lbl !== '') {
+                    // {center} is stored literal so it can resolve per employee here.
+                    $__lbl = str_replace('{center}', (string)($orgData['organization_name'] ?? ''), $__lbl);
+                    $html .= '<p>' . banglaNumber($copySL) . '। ' . htmlspecialchars($__lbl) . '</p>';
+                    $copySL++;
+                    continue;
+                }
+
                 // Get copy employee
                 $stmt = $con->prepare("SELECT * FROM employee_list WHERE id = ?");
                 $stmt->bind_param("i", $copy['copyTo']);
