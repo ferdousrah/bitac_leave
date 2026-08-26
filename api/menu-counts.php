@@ -299,6 +299,33 @@ if ($myOrgID > 0 || $isSuperAdmin) {
     $counts['manage-approved-leaves'] = 0;
 }
 
+// ═══ ছুটি সনদ অনুমোদন (leave-certificate-approval) ═══
+// Certificate signatories come from leave_edit_approval_signatory, the same
+// table the সিগনেটরি সেটিংS page writes, and are scoped per centre. No Super
+// Admin bypass here either — count only what this user can actually action.
+if ($myEmpID > 0) {
+    $certOrgs = [];
+    $cq = mysqli_query($con,
+        "SELECT organization_id FROM leave_edit_approval_signatory WHERE employeeID = $myEmpID");
+    if ($cq) while ($cr = mysqli_fetch_assoc($cq)) $certOrgs[] = (int)$cr['organization_id'];
+
+    if ($certOrgs) {
+        $orgList = implode(',', $certOrgs);
+        $q = mysqli_query($con, "
+            SELECT COUNT(*) AS c
+            FROM yearly_leave_summary yls
+            INNER JOIN employee_list el ON yls.employeeID = el.id
+            WHERE yls.isApproved = 0
+              AND el.organization_id IN ($orgList)
+        ");
+        $counts['leave-certificate-approval'] = (int)(mysqli_fetch_assoc($q)['c'] ?? 0);
+    } else {
+        $counts['leave-certificate-approval'] = 0;
+    }
+} else {
+    $counts['leave-certificate-approval'] = 0;
+}
+
 // `total` = sum of slugs under the Leave module ONLY (that's the module whose
 // parent shows #totalTask). Other-module slugs (like allowed-leave-applications
 // under Admin Panel) are returned so their individual badges work, but they
@@ -311,6 +338,7 @@ $leaveModuleSlugs = [
     'leave-approval',
     'leave-joining-approval',
     'all-leave-application',
+    'leave-certificate-approval',
 ];
 $adminPanelSlugs = [
     'allowed-leave-applications',

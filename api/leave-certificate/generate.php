@@ -169,7 +169,11 @@ function generateCertificate($con, $empID, $incrementYear, $certificateDateForma
             withoutSalaryInDays = '{$leaveData['withoutSalaryInDays']}',
             signatory = '$signatory',
             signatoryDesignation = '$signatoryDesignation',
-            signatoryCenterID = '$signatoryCenterID'
+            signatoryCenterID = '$signatoryCenterID',
+            isApproved = 0,
+            approvedBy = NULL,
+            approvedDate = NULL,
+            rejectionReason = NULL
             WHERE leaveSummaryID = '$leaveSummaryID'");
 
         if (!$updateQ) {
@@ -180,9 +184,9 @@ function generateCertificate($con, $empID, $incrementYear, $certificateDateForma
 
     } else {
         $insertQ = mysqli_query($con, "INSERT INTO yearly_leave_summary
-            (employeeID, designation, centerID, memorial_number, date, noticeDate, year, fullHalfSalaryInDays, HalfSalaryInDays, withoutSalaryInDays, creationDate, signatory, signatoryDesignation, signatoryCenterID)
+            (employeeID, designation, centerID, memorial_number, date, noticeDate, year, fullHalfSalaryInDays, HalfSalaryInDays, withoutSalaryInDays, creationDate, signatory, signatoryDesignation, signatoryCenterID, isApproved)
             VALUES
-            ('$empID', '$designation', '$centerID', '$memorialNo', '$certificateDateFormatted', '$noticeDateFormatted', '$incrementYear', '{$leaveData['fullAvgSalaryInDays']}', '{$leaveData['halfSalaryInDays']}', '{$leaveData['withoutSalaryInDays']}', '$creationDate', '$signatory', '$signatoryDesignation', '$signatoryCenterID')");
+            ('$empID', '$designation', '$centerID', '$memorialNo', '$certificateDateFormatted', '$noticeDateFormatted', '$incrementYear', '{$leaveData['fullAvgSalaryInDays']}', '{$leaveData['halfSalaryInDays']}', '{$leaveData['withoutSalaryInDays']}', '$creationDate', '$signatory', '$signatoryDesignation', '$signatoryCenterID', 0)");
 
         if (!$insertQ) {
             return false;

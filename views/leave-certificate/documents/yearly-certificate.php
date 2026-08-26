@@ -282,7 +282,24 @@ function generatePDFData($employeeID, $year) {
             .bold { font-weight: bold; }
             table { width: 100%; border-collapse: collapse; }
             .small-text { font-size: 11px; }
+            .cert-draft-banner {
+                border: 1px solid #c0392b; color: #c0392b;
+                padding: 6px 10px; margin-bottom: 10px;
+                text-align: center; font-size: 12px;
+            }
         </style>';
+
+        // A certificate nobody has signed off must not read as a finished
+        // document. Drawn as a banner rather than an mPDF watermark: the
+        // watermark uses its own font and drops Bengali glyphs.
+        $__certStatus = (int)($leaveSummary['isApproved'] ?? 1);
+        if ($__certStatus === 0) {
+            $html .= '<div class="cert-draft-banner">অনুমোদনের অপেক্ষায় — এটি এখনো চূড়ান্ত সনদ নয়।</div>';
+        } elseif ($__certStatus === 2) {
+            $__reason = trim((string)($leaveSummary['rejectionReason'] ?? ''));
+            $html .= '<div class="cert-draft-banner">অননুমোদিত সনদ'
+                   . ($__reason !== '' ? ' — ' . htmlspecialchars($__reason) : '') . '</div>';
+        }
 
         // Header with logos
         $html .= '<table><tr>';

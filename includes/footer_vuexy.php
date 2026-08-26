@@ -368,7 +368,8 @@ function loadContent() {
                 'leave-joining-approval',
                 'allowed-leave-applications',
                 'manage-approved-leaves',
-                'all-leave-application'
+                'all-leave-application',
+                'leave-certificate-approval'
             ];
 
             slugs.forEach(function(slug) {
