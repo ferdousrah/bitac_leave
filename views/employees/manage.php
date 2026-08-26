@@ -115,14 +115,16 @@ window.BITAC_EMP_GATE = {
                 </button>
             </li>
             <?php endif; ?>
+            <?php if ($pendingCount > 0): ?>
+            <!-- Section assignment has its own page now; this only points at it. -->
             <li class="nav-item">
-                <button type="button" class="nav-link <?= $pendingCount > 0 ? 'has-pending' : '' ?>" role="tab"
-                        data-bs-toggle="tab" data-bs-target="#pending_section_employees">
+                <a class="nav-link has-pending" href="../transfer/section-assign.php?menuslug=employee-transfer-section" data-turbo="true">
                     <i class="ti tabler-transfer-in me-2"></i>
-                    <span class="d-none d-sm-inline">নতুন বদলি</span>
-                    <span class="badge ms-2 <?= $pendingCount > 0 ? 'bg-warning' : '' ?>"><?php echo banglaNumber($pendingCount); ?></span>
-                </button>
+                    <span class="d-none d-sm-inline">সেকশন বরাদ্দ</span>
+                    <span class="badge ms-2 bg-warning"><?php echo banglaNumber($pendingCount); ?></span>
+                </a>
             </li>
+            <?php endif; ?>
         </ul>
 
         <div class="tab-content p-3">
@@ -166,76 +168,6 @@ window.BITAC_EMP_GATE = {
             </div>
             <?php endif; ?>
 
-            <!-- Pending Section Assignment (Incoming Transfers) Tab -->
-            <div class="tab-pane fade" id="pending_section_employees" role="tabpanel">
-                <div class="alert alert-warning d-flex align-items-center mb-3" role="alert">
-                    <i class="ti tabler-info-circle me-2"></i>
-                    <div>
-                        <strong>সেকশন বরাদ্দ অপেক্ষমান:</strong>
-                        এই কর্মচারীরা প্রধান কার্যালয়ের আদেশে এই কেন্দ্রে বদলি হয়েছেন। সেকশন বরাদ্দ না হওয়া পর্যন্ত তাঁরা ছুটি/অনুমোদন কার্যক্রমে অংশগ্রহণ করতে পারবেন না।
-                    </div>
-                </div>
-                <div class="table-responsive">
-                    <table id="pendingSectionTable" class="table modern-leave-table align-middle" style="width:100%">
-                        <thead>
-                            <tr>
-                                <th style="width:80px;">ক্রমিক</th>
-                                <th>কর্মচারী</th>
-                                <th>পূর্বের কেন্দ্র</th>
-                                <th>কার্যকর তারিখ</th>
-                                <th>আদেশ নং</th>
-                                <th class="text-center" style="width:100px;">সংযুক্তি</th>
-                                <th class="text-center" style="width:200px;">কার্যক্রম</th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Section Assignment Modal -->
-<div class="modal fade" id="assignSectionModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <form id="assignSectionForm">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="ti tabler-building me-2 text-primary"></i>সেকশন বরাদ্দ করুন</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="বন্ধ"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" id="asg_emp_id" name="dataID">
-                    <div class="alert alert-light border mb-3 py-2">
-                        <div class="d-flex justify-content-between">
-                            <div>
-                                <strong id="asg_emp_name">—</strong>
-                                <div class="small text-muted" id="asg_emp_id_disp"></div>
-                            </div>
-                            <div class="text-end">
-                                <div class="small text-muted">পূর্বের কেন্দ্র</div>
-                                <div class="fw-semibold" id="asg_from_center">—</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">সেকশন <span class="text-danger">*</span></label>
-                        <select id="asg_section_id" name="section_id" class="form-select" required>
-                            <option value="">— লোড হচ্ছে —</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">প্রকৃত যোগদান তারিখ <span class="text-danger">*</span></label>
-                        <input type="text" id="asg_joining_date" name="actual_joining_date" class="form-control flatpickr-input" required placeholder="YYYY-MM-DD">
-                        <small class="text-muted">কর্মচারী কোন তারিখে এই কেন্দ্রে যোগদান করেছেন</small>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">বাতিল</button>
-                    <button type="button" class="btn btn-primary" id="btnSubmitAssign"><i class="ti tabler-check me-1"></i>বরাদ্দ চূড়ান্ত করুন</button>
-                </div>
-            </form>
         </div>
     </div>
 </div>
@@ -275,28 +207,8 @@ function decorateRow(row) {
     });
 }
 
-var activeTable, inactiveTable, pendingSectionTable;
+var activeTable, inactiveTable;
 
-var pendingDtCols = [
-    { data: "sl",              orderable: false, searchable: false },
-    { data: "employee_cell",   orderable: false },
-    { data: "from_center",     orderable: false },
-    { data: "transfer_date",   orderable: false },
-    { data: "order_number",    orderable: false },
-    { data: "attachment",      orderable: false, searchable: false, className: 'text-center' },
-    { data: "action",          orderable: false, searchable: false, className: 'text-center' }
-];
-
-function decoratePendingRow(row) {
-    var labels = ['ক্রমিক', 'কর্মচারী', 'পূর্বের কেন্দ্র', 'কার্যকর তারিখ', 'আদেশ নং', 'সংযুক্তি', 'কার্যক্রম'];
-    var compact = [0, 5, 6];
-    $(row).find('td').each(function(i){
-        var $td = $(this);
-        $td.attr('data-label', labels[i] || '');
-        if ($.trim($td.text()) === '' && $td.children().length === 0) $td.addClass('is-empty');
-        if (compact.indexOf(i) !== -1) $td.addClass('compact-cell');
-    });
-}
 
 function buildPayload(scope) {
     var prefix = '#' + scope;
@@ -434,99 +346,6 @@ $(document).ready(function() {
                 language: dtLang
             });
         }
-    });
-
-    // Pending Section tab — lazy init
-    $('button[data-bs-target="#pending_section_employees"]').on('shown.bs.tab', function() {
-        if (!pendingSectionTable) {
-            pendingSectionTable = $('#pendingSectionTable').DataTable({
-                processing: true,
-                serverSide: true,
-                responsive: false,
-                autoWidth: false,
-                ajax: { url: "../../api/employees/fetch-pending-section.php", type: "POST" },
-                columns: pendingDtCols,
-                createdRow: function(row) { decoratePendingRow(row); },
-                pageLength: 25,
-                lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "সকল"]],
-                language: dtLang
-            });
-        }
-    });
-
-    // "Section বরাদ্দ" button → open modal (delegated for DataTable re-draws)
-    $(document).on('click', '.btn-assign-section', function() {
-        var $btn = $(this);
-        var empId    = $btn.data('emp');
-        var empName  = $btn.data('name') || '';
-        var empCode  = $btn.data('code') || '';
-        var fromCtr  = $btn.data('from') || '—';
-        var trDate   = $btn.data('transfer-date') || '';
-        var orgId    = $btn.data('org');
-
-        $('#asg_emp_id').val(empId);
-        $('#asg_emp_name').text(empName);
-        $('#asg_emp_id_disp').text(empCode ? '(' + empCode + ')' : '');
-        $('#asg_from_center').text(fromCtr);
-        $('#asg_section_id').html('<option value="">— লোড হচ্ছে —</option>');
-        $('#asg_joining_date').val(trDate);
-
-        if (typeof flatpickr !== 'undefined') {
-            flatpickr('#asg_joining_date', { dateFormat: 'Y-m-d', allowInput: true, defaultDate: trDate, static: true });
-        }
-
-        // Load sections for employee's current center
-        $.get('../../api/transfer/sections-by-center.php', { org_id: orgId }, function(resp) {
-            if (resp && resp.status === 1 && resp.items && resp.items.length) {
-                var opts = '<option value="">— নির্বাচন করুন —</option>';
-                resp.items.forEach(function(s) {
-                    opts += '<option value="' + s.id + '">' + $('<div>').text(s.name).html() + '</option>';
-                });
-                $('#asg_section_id').html(opts);
-            } else {
-                $('#asg_section_id').html('<option value="">— সেকশন নেই —</option>');
-            }
-        }, 'json');
-
-        $('#assignSectionModal').modal('show');
-    });
-
-    // Section assignment submit — bound to button click (not form submit) to bypass
-    // Turbo's form interception that was causing the form to submit natively (GET to URL).
-    $(document).on('click', '#btnSubmitAssign', function(e) {
-        e.preventDefault();
-        var $form = $('#assignSectionForm');
-        // Native validity check (preserves required-field UX)
-        if ($form[0] && typeof $form[0].checkValidity === 'function' && !$form[0].checkValidity()) {
-            $form[0].reportValidity();
-            return;
-        }
-        var $btn = $('#btnSubmitAssign');
-        $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>প্রক্রিয়াকরণ...');
-        $.ajax({
-            type: 'POST',
-            url: '../../api/transfer/assign-section.php',
-            data: $form.serialize(),
-            dataType: 'json',
-            success: function(resp) {
-                if (resp && resp.status === 1) {
-                    $('#assignSectionModal').modal('hide');
-                    Swal.fire({ title: 'সফল', text: resp.message || 'সেকশন বরাদ্দ সম্পন্ন', icon: 'success', confirmButtonColor: '#6c5ce7', customClass: { confirmButton: 'btn btn-primary' }, buttonsStyling: false }).then(function() {
-                        // Refresh both pending and active tables (employee moves from pending → active)
-                        if (pendingSectionTable) pendingSectionTable.ajax.reload(null, false);
-                        if (activeTable) activeTable.ajax.reload(null, false);
-                    });
-                } else {
-                    Swal.fire({ title: 'ত্রুটি', text: (resp && resp.message) || 'বরাদ্দ ব্যর্থ', icon: 'error', confirmButtonColor: '#dc3545', customClass: { confirmButton: 'btn btn-danger' }, buttonsStyling: false });
-                }
-            },
-            error: function() {
-                Swal.fire({ title: 'ত্রুটি', text: 'সার্ভার সংযোগ ব্যর্থ', icon: 'error', confirmButtonColor: '#dc3545', customClass: { confirmButton: 'btn btn-danger' }, buttonsStyling: false });
-            },
-            complete: function() {
-                $btn.prop('disabled', false).html('<i class="ti tabler-check me-1"></i>বরাদ্দ চূড়ান্ত করুন');
-            }
-        });
     });
 
     // Stat card → switch tab + active highlight
