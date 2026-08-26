@@ -338,12 +338,12 @@ $leaveModuleSlugs = [
     'leave-approval',
     'leave-joining-approval',
     'all-leave-application',
-    'leave-certificate-approval',
 ];
 $adminPanelSlugs = [
     'allowed-leave-applications',
     'optional-pre-approval-forward-queue',
     'manage-approved-leaves',
+    'leave-certificate-approval',
 ];
 
 $total = 0;
