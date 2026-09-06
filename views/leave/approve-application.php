@@ -3,7 +3,7 @@ require_once(__DIR__ . '/../../includes/header_vuexy.php');
 // banglaNumber() lives here — the segment-history modal formats its dates
 // and day counts with it.
 require_once(LIBRARY_PATH . '/number_converter.php');
-require_once(__DIR__ . '/../../includes/segment-history-timeline.php');
+require_once(__DIR__ . '/../../includes/case-file-table.php');
 
 $dataID             = intval($_GET['dataID']             ?? 0);
 $leaveApplicationID = intval($_GET['leaveApplicationID'] ?? 0);
@@ -595,29 +595,26 @@ if ($app['adminInitiator']) {
 
 /* Modal refinements */
 #segmentEditModal .modal-content,
-#segmentHistoryModal .modal-content {
+#caseFileModal .modal-content {
     border: none;
     border-radius: 0.75rem;
     overflow: hidden;
     box-shadow: 0 10px 40px rgba(0,0,0,0.15);
 }
 #segmentEditModal .modal-header,
-#segmentHistoryModal .modal-header,
-#prevCommentsModal .modal-header {
+#caseFileModal .modal-header {
     background: linear-gradient(135deg, #6c5ce7 0%, #5648c4 100%);
     color: #fff;
     border: none;
     padding: 16px 22px;
 }
 #segmentEditModal .modal-title,
-#segmentHistoryModal .modal-title,
-#prevCommentsModal .modal-title {
+#caseFileModal .modal-title {
     color: #fff !important;
     font-weight: 600;
 }
 #segmentEditModal .btn-close,
-#segmentHistoryModal .btn-close,
-#prevCommentsModal .btn-close {
+#caseFileModal .btn-close {
     filter: brightness(0) invert(1);
     opacity: 0.85;
 }
@@ -884,32 +881,6 @@ usort($threadEvents, function($a, $b) {
 });
 
 // Build the thread HTML once — used by the modal below (no inline accordion anymore)
-$threadHtml = '';
-if (!empty($threadEvents)) {
-    $threadHtml = '<div class="thread-wrap" id="commentThread">';
-    foreach ($threadEvents as $idx => $ev) {
-        $dateStr = $ev['ts'] ? date('d/m/Y', $ev['ts']) : '';
-        $isLast  = $idx === count($threadEvents) - 1;
-        $threadHtml .= '<div class="thread-item' . ($isLast ? ' is-last' : '') . '">'
-            . '<div class="thread-avatar" style="background:' . htmlspecialchars($ev['color']) . ';">'
-            .   '<i class="ti ' . htmlspecialchars($ev['icon']) . '"></i>'
-            . '</div>'
-            . '<div class="thread-bubble" style="--bubble-accent:' . htmlspecialchars($ev['color']) . ';">'
-            .   '<div class="thread-bubble-head">'
-            .     '<span class="thread-name">' . htmlspecialchars($ev['name']) . '</span>'
-            .     (!empty($ev['title']) ? '<span class="thread-title">— ' . htmlspecialchars($ev['title']) . '</span>' : '')
-            .     '<span class="thread-badge" style="background:' . htmlspecialchars($ev['badge'][1]) . ';color:' . htmlspecialchars($ev['badge'][2]) . ';">'
-            .       htmlspecialchars($ev['badge'][0])
-            .     '</span>'
-            .     (!empty($ev['extra']) ? '<span class="thread-extra">' . $ev['extra'] . '</span>' : '')
-            .     ($dateStr ? '<span class="thread-time"><i class="ti tabler-clock me-1"></i>' . $dateStr . '</span>' : '')
-            .   '</div>'
-            .   '<div class="thread-bubble-body">' . $ev['body'] . '</div>'
-            . '</div>'
-            . '</div>';
-    }
-    $threadHtml .= '</div>';
-}
 ?>
 
 <div class="card approve-card shadow-sm border-0">
@@ -1023,20 +994,16 @@ if (!empty($threadEvents)) {
                         </table>
                     </div>
                     <div class="mt-2 d-flex gap-2 align-items-center flex-wrap">
-                        <?php if (!empty($threadEvents)): ?>
-                            <button type="button" class="btn btn-sm btn-label-info" data-bs-toggle="modal" data-bs-target="#prevCommentsModal">
-                                <i class="ti tabler-messages me-1"></i>পূর্ববর্তী মন্তব্য
-                                <span class="badge bg-info ms-1"><?= count($threadEvents) ?></span>
+                        <?php if (!empty($threadEvents) || !empty($segHistory)): ?>
+                            <?php // One view: comments and segment changes interleaved by time. ?>
+                            <button type="button" class="btn btn-sm btn-label-info" data-bs-toggle="modal" data-bs-target="#caseFileModal">
+                                <i class="ti tabler-list-details me-1"></i>নথির পূর্ণ বিবরণ
+                                <span class="badge bg-info ms-1"><?= banglaNumber(count($threadEvents) + count($segHistory)) ?></span>
                             </button>
                         <?php endif; ?>
                         <button type="button" class="btn btn-sm btn-label-primary" id="editSegmentsBtn" data-bs-toggle="modal" data-bs-target="#segmentEditModal">
                             <i class="ti tabler-edit me-1"></i>প্রস্তাবিত ছুটি সম্পাদনা
                         </button>
-                        <?php if (!empty($segHistory)): ?>
-                            <button type="button" class="btn btn-sm btn-label-secondary" data-bs-toggle="modal" data-bs-target="#segmentHistoryModal">
-                                <i class="ti tabler-history me-1"></i>পরিবর্তন ইতিহাস (<?= count($segHistory) ?>)
-                            </button>
-                        <?php endif; ?>
                         
                     </div>
 
@@ -1144,16 +1111,28 @@ if (!empty($threadEvents)) {
 <!-- ═══════════════════════════════════════════════════════════
      Segment History Modal
 ═══════════════════════════════════════════════════════════ -->
-<?php if (!empty($segHistory)): ?>
-<div class="modal fade" id="segmentHistoryModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+<!-- ═══════════════════════════════════════════════════════════
+     Case file — comments and segment changes, one chronological table
+═══════════════════════════════════════════════════════════ -->
+<?php if (!empty($threadEvents) || !empty($segHistory)): ?>
+<div class="modal fade" id="caseFileModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="ti tabler-history me-1"></i>Segment পরিবর্তনের ইতিহাস</h5>
+                <h5 class="modal-title">
+                    <i class="ti tabler-list-details me-1"></i>নথির পূর্ণ বিবরণ
+                    <span class="badge bg-label-info ms-2">আবেদন নং <?= htmlspecialchars($app['application_no'] ?? '') ?></span>
+                </h5>
                 <button type="button" class="ai-modal-close" data-bs-dismiss="modal" aria-label="Close"><i class="ti tabler-x"></i></button>
             </div>
             <div class="modal-body">
-                <?= render_segment_history_timeline($con, $leaveApplicationID, $leaveTypeMap) ?>
+                <div class="text-muted small mb-3">
+                    <i class="ti tabler-info-circle me-1"></i>যখন যিনি যা করেছেন — সময়ের ক্রম অনুযায়ী। একই ব্যক্তির দুটি কাজ দুটি আলাদা সারিতে আসে।
+                </div>
+                <?= render_case_file_table($con, $leaveApplicationID, $threadEvents, $leaveTypeMap) ?>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">বন্ধ করুন</button>
             </div>
         </div>
     </div>
@@ -1163,27 +1142,6 @@ if (!empty($threadEvents)) {
 <!-- ═══════════════════════════════════════════════════════════
      Previous Comments Modal (পূর্ববর্তী মন্তব্য)
 ═══════════════════════════════════════════════════════════ -->
-<?php if (!empty($threadEvents)): ?>
-<div class="modal fade" id="prevCommentsModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="ti tabler-messages me-1"></i>পূর্ববর্তী মন্তব্য
-                    <span class="badge bg-label-info ms-2"><?= count($threadEvents) ?></span>
-                </h5>
-                <button type="button" class="ai-modal-close" data-bs-dismiss="modal" aria-label="Close"><i class="ti tabler-x"></i></button>
-            </div>
-            <div class="modal-body">
-                <?= $threadHtml ?>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">বন্ধ করুন</button>
-            </div>
-        </div>
-    </div>
-</div>
-<?php endif; ?>
 
 
 <script>
