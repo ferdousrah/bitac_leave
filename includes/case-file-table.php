@@ -26,6 +26,45 @@ require_once(__DIR__ . '/segment-history-timeline.php');
 if (!function_exists('render_case_file_table')) {
 
 /**
+ * The ভূমিকা column speaks the printed সম্পাদনার নোট's vocabulary, so a desk
+ * reads the same whichever record its row came from. Without this the same
+ * person shows as "বিভাগীয় প্রধান" on the row carrying their note and
+ * "সুপারিশকারীর প্রস্তাব" on the row carrying their segment edit — which is
+ * exactly the column the note has and this table appeared to be missing.
+ *
+ * Returns [label, background, foreground]. Anything unrecognised — a ফেরত, a
+ * resubmission — passes through untouched, because those are events the note
+ * has no row for and inventing a role for them would mislead.
+ */
+function cf_note_role($label, $bg, $fg, $key = '', $serial = 0)
+{
+    $step = $serial > 0 ? ' (ধাপ ' . banglaNumber($serial) . ')' : '';
+
+    $byKey = [
+        'applicant'  => ['আবেদনকারী',        '#e8e5ff', '#5648c4'],
+        'supervisor' => ['বিভাগীয় প্রধান',   '#d1f4ff', '#0883a3'],
+        'admin'      => ['নথি উপস্থাপক',      '#ede5fa', '#5e3eaa'],
+        'signatory'  => ['নথি অনুমোদনকারী' . $step, '#d8f5e3', '#1a7e44'],
+    ];
+    if ($key !== '' && isset($byKey[$key])) return $byKey[$key];
+
+    // Thread events carry no key — they are built inline on the pages — so they
+    // are matched on the label they were written with.
+    $byLabel = [
+        'আবেদনকারী'                  => 'applicant',
+        'পুনঃ যাচাইয়ের পর জমা'        => 'applicant',
+        'বিভাগীয় প্রধান'             => 'supervisor',
+        'বিভাগীয় প্রধান (পূর্ববর্তী)' => 'supervisor',
+        'নোট উপস্থাপনকারী'            => 'admin',
+        'অনুমোদনকারী'                => 'signatory',
+        'অনুমোদনকারী (পূর্ববর্তী)'    => 'signatory',
+    ];
+    if (isset($byLabel[$label])) return $byKey[$byLabel[$label]];
+
+    return [$label, $bg, $fg];
+}
+
+/**
  * @param mysqli $con
  * @param int    $applicationID
  * @param array  $threadEvents  the page's already-built comment thread; each
@@ -65,13 +104,17 @@ function render_case_file_table($con, $applicationID, array $threadEvents, array
         if (!empty($s['removedChips'])) $delta[] = banglaNumber(count($s['removedChips'])) . 'টি অপসারণ';
         if ($delta) $proposal .= '<div class="cf-delta">' . htmlspecialchars(implode(' · ', $delta)) . '</div>';
 
+        list($__role, $__rbg, $__rfg) = cf_note_role(
+            $s['deskLabel'], $s['deskBg'], $s['deskFg'],
+            $s['deskKey'] ?? '', (int)($s['deskSerial'] ?? 0));
+
         $events[] = [
             'ts'       => $ts,
             'order'    => 0,          // a proposal precedes the note written about it
             'actor'    => trim((string)$s['name']),
-            'role'     => $s['deskLabel'],
-            'roleBg'   => $s['deskBg'],
-            'roleFg'   => $s['deskFg'],
+            'role'     => $__role,
+            'roleBg'   => $__rbg,
+            'roleFg'   => $__rfg,
             'icon'     => $s['deskIcon'],
             'name'     => trim((string)$s['name']),
             'title'    => '',
@@ -88,13 +131,16 @@ function render_case_file_table($con, $applicationID, array $threadEvents, array
         if (!empty($ev['extra'])) {
             $body .= '<div class="cf-extra">' . $ev['extra'] . '</div>';
         }
+        list($__role, $__rbg, $__rfg) = cf_note_role(
+            $badge[0] ?? '', $badge[1] ?? '#eee', $badge[2] ?? '#555');
+
         $events[] = [
             'ts'       => (int)($ev['ts'] ?? 0),
             'order'    => 1,
             'actor'    => trim((string)($ev['name'] ?? '')),
-            'role'     => $badge[0] ?? '',
-            'roleBg'   => $badge[1] ?? '#eee',
-            'roleFg'   => $badge[2] ?? '#555',
+            'role'     => $__role,
+            'roleBg'   => $__rbg,
+            'roleFg'   => $__rfg,
             'icon'     => $ev['icon'] ?? 'tabler-message',
             'name'     => trim((string)($ev['name'] ?? '')),
             'title'    => trim((string)($ev['title'] ?? '')),

@@ -240,7 +240,7 @@ function segment_history_stages($con, $applicationID, array $leaveTypeMap) {
     $deskMeta = function ($level, $note, $actorEmp) use ($chain, $chainByEmp, $applicantID, &$actorSeen) {
         if (stripos((string)$note, 'applicant') !== false
             || ($actorEmp && $applicantID && $actorEmp === $applicantID)) {
-            return ['আবেদনকারীর জমা', '#e8e5ff', '#5648c4', 'tabler-user'];
+            return ['আবেদনকারীর জমা', '#e8e5ff', '#5648c4', 'tabler-user', 'applicant'];
         }
 
         $meta = null;
@@ -257,19 +257,21 @@ function segment_history_stages($con, $applicationID, array $leaveTypeMap) {
 
         if ($meta) {
             if (!empty($meta['isSupervisor'])) {
-                return ['সুপারিশকারীর প্রস্তাব', '#d1f4ff', '#0883a3', 'tabler-clipboard-check'];
+                return ['সুপারিশকারীর প্রস্তাব', '#d1f4ff', '#0883a3', 'tabler-clipboard-check', 'supervisor'];
             }
             return ['অনুমোদনকারীর প্রস্তাব (ধাপ ' . banglaNumber((int)$meta['serial']) . ')',
-                    '#d8f5e3', '#1a7e44', 'tabler-circle-check'];
+                    '#d8f5e3', '#1a7e44', 'tabler-circle-check', 'signatory', (int)$meta['serial']];
         }
-        return ['প্রশাসনিক ডেস্ক (ছুটি সম্পাদনা)', '#ede5fa', '#5e3eaa', 'tabler-user-edit'];
+        return ['প্রশাসনিক ডেস্ক (ছুটি সম্পাদনা)', '#ede5fa', '#5e3eaa', 'tabler-user-edit', 'admin'];
     };
 
 
     // Resolve each stage's desk once, so callers never repeat this logic.
     foreach ($stages as &$__s) {
-        list($__label, $__bg, $__fg, $__icon) =
-            $deskMeta($__s['level'], $__s['note'], (int)($__s['actor'] ?? 0));
+        $__m = $deskMeta($__s['level'], $__s['note'], (int)($__s['actor'] ?? 0));
+        list($__label, $__bg, $__fg, $__icon) = $__m;
+        $__s['deskKey']    = $__m[4] ?? '';
+        $__s['deskSerial'] = $__m[5] ?? 0;
         $__s['deskLabel'] = $__label;
         $__s['deskBg']    = $__bg;
         $__s['deskFg']    = $__fg;
