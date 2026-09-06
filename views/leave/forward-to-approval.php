@@ -1162,9 +1162,6 @@ include(__DIR__ . '/../../includes/applicant_balance_modal.php');
                 <button type="button" class="ai-modal-close" data-bs-dismiss="modal" aria-label="Close"><i class="ti tabler-x"></i></button>
             </div>
             <div class="modal-body">
-                <div class="text-muted small mb-3">
-                    <i class="ti tabler-info-circle me-1"></i>যখন যিনি যা করেছেন — সময়ের ক্রম অনুযায়ী। একই ব্যক্তির দুটি কাজ দুটি আলাদা সারিতে আসে।
-                </div>
                 <?= render_case_file_table($con, $leaveApplicationID, $threadEvents, $leaveTypeMap) ?>
             </div>
             <div class="modal-footer">
