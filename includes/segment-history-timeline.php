@@ -45,11 +45,19 @@ function segment_history_stages($con, $applicationID, array $leaveTypeMap) {
     // actorEmpID is what identifies the desk — signatoryLevel alone is not
     // reliable (save-segments.php resolves the center-admin branch first, so
     // a supervisor who also carries isCenterAdmin gets logged with level 0).
+    // changedBy holds a user_list.dataID. update-application.php used to write an
+    // employee_list.id there instead, so rows from a resubmission joined to
+    // nothing — the actor came out nameless and, being unidentifiable, fell to
+    // the "administrative desk" label. The second join rescues those rows so
+    // existing history reads correctly without a data repair.
     $stmt = mysqli_prepare($con,
-        "SELECT h.*, el.employee_name, ul.employee_id AS actorEmpID
+        "SELECT h.*,
+                COALESCE(el.employee_name, el2.employee_name) AS employee_name,
+                COALESCE(ul.employee_id, el2.id)             AS actorEmpID
          FROM leave_segment_history h
-         LEFT JOIN user_list     ul ON h.changedBy  = ul.dataID
-         LEFT JOIN employee_list el ON ul.employee_id = el.id
+         LEFT JOIN user_list     ul  ON h.changedBy    = ul.dataID
+         LEFT JOIN employee_list el  ON ul.employee_id = el.id
+         LEFT JOIN employee_list el2 ON ul.dataID IS NULL AND h.changedBy = el2.id
          WHERE h.applicationID = ?
          ORDER BY h.changedAt ASC, h.dataID ASC");
     mysqli_stmt_bind_param($stmt, 'i', $applicationID);

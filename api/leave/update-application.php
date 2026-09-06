@@ -10,13 +10,21 @@ if (!isset($_SESSION['username'])) { echo 0; exit; }
 $editID = (int)($_POST['editID'] ?? 0);
 if ($editID <= 0) { echo 0; exit; }
 
-// Get current user's employee_id
-$uStmt = mysqli_prepare($con, "SELECT employee_id FROM user_list WHERE user_id = ?");
+// Get current user's employee_id, plus the user row id and name — the segment
+// history keys changedBy on user_list.dataID (that is what every other writer
+// stores and what the history view joins on), not on the employee id.
+$uStmt = mysqli_prepare($con,
+    "SELECT ul.dataID, ul.employee_id, el.employee_name
+     FROM user_list ul
+     LEFT JOIN employee_list el ON el.id = ul.employee_id
+     WHERE ul.user_id = ?");
 mysqli_stmt_bind_param($uStmt, 's', $_SESSION['username']);
 mysqli_stmt_execute($uStmt);
 $userRow = mysqli_fetch_assoc(mysqli_stmt_get_result($uStmt));
 mysqli_stmt_close($uStmt);
-$userEmpId = (int)($userRow['employee_id'] ?? 0);
+$userEmpId    = (int)($userRow['employee_id'] ?? 0);
+$userDataID   = (int)($userRow['dataID'] ?? 0);
+$userFullName = trim((string)($userRow['employee_name'] ?? ''));
 if ($userEmpId <= 0) { echo 0; exit; }
 
 // Verify ownership + editability. Allowed states:
@@ -135,10 +143,11 @@ try {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())");
     $hStmt = mysqli_prepare($con,
         "INSERT INTO leave_segment_history
-         (applicationID, segmentID, action, signatoryLevel, changedBy, changedByName, newData, changedAt)
-         VALUES (?, ?, 'edited', 0, ?, ?, ?, NOW())");
+         (applicationID, segmentID, action, signatoryLevel, changedBy, changedByName, newData, note, changedAt)
+         VALUES (?, ?, 'edited', 0, ?, ?, ?, 'Applicant resubmission', NOW())");
     $createdBy = $userEmpId;
-    $changedByName = '';
+    $historyActor  = $userDataID;
+    $changedByName = $userFullName;
     foreach ($normalizedSegs as $idx => $s) {
         $serial = $idx + 1;
         // requested
@@ -152,7 +161,7 @@ try {
         mysqli_stmt_execute($sStmt);
 
         $newJson = json_encode($s);
-        mysqli_stmt_bind_param($hStmt, 'iiiis', $editID, $reqSegID, $createdBy, $changedByName, $newJson);
+        mysqli_stmt_bind_param($hStmt, 'iiiss', $editID, $reqSegID, $historyActor, $changedByName, $newJson);
         mysqli_stmt_execute($hStmt);
     }
     mysqli_stmt_close($sStmt);
