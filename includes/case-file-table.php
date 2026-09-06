@@ -59,9 +59,65 @@ function cf_note_role($label, $bg, $fg, $key = '', $serial = 0)
         'অনুমোদনকারী'                => 'signatory',
         'অনুমোদনকারী (পূর্ববর্তী)'    => 'signatory',
     ];
-    if (isset($byLabel[$label])) return $byKey[$byLabel[$label]];
+    if (isset($byLabel[$label])) {
+        $m = $byKey[$byLabel[$label]];
+        return [$m[0], $m[1], $m[2], true];
+    }
 
-    return [$label, $bg, $fg];
+    return [$label, $bg, $fg, false];
+}
+
+/**
+ * Who each person on this application is, keyed on their name — the only handle
+ * a thread event carries. Used for events that describe an action rather than a
+ * desk (a ফেরত, say): the column should still say বিভাগীয় প্রধান, because that
+ * is who did it, with the action shown beside the remark instead.
+ *
+ * A person can hold two seats — routinely the supervisor and an approver further
+ * down. The supervisor seat wins, then the lowest serial: a return almost always
+ * comes from the desk the case is sitting at, which is the earliest open one.
+ */
+function cf_role_by_name($con, $applicationID)
+{
+    $map = [];
+    $applicationID = (int)$applicationID;
+
+    $q = mysqli_query($con,
+        "SELECT el.employee_name, la.adminInitiator
+         FROM leave_applications la
+         LEFT JOIN employee_list el ON el.id = la.applicantID
+         WHERE la.dataID = $applicationID LIMIT 1");
+    $row = $q ? mysqli_fetch_assoc($q) : null;
+    if (!empty($row['employee_name'])) $map[trim($row['employee_name'])] = ['applicant', 0];
+
+    if (!empty($row['adminInitiator'])) {
+        $aq = mysqli_query($con,
+            "SELECT el.employee_name FROM user_list ul
+             LEFT JOIN employee_list el ON el.id = ul.employee_id
+             WHERE ul.dataID = " . (int)$row['adminInitiator'] . " LIMIT 1");
+        $ar = $aq ? mysqli_fetch_assoc($aq) : null;
+        if (!empty($ar['employee_name'])) {
+            $n = trim($ar['employee_name']);
+            if (!isset($map[$n])) $map[$n] = ['admin', 0];
+        }
+    }
+
+    $cq = mysqli_query($con,
+        "SELECT d.serial, d.isSupervisor, el.employee_name
+         FROM leave_data_for_approval d
+         LEFT JOIN employee_list el ON el.id = d.signatory
+         WHERE d.leaveApplicationID = $applicationID
+         ORDER BY d.isSupervisor DESC, d.serial ASC");
+    if ($cq) {
+        while ($c = mysqli_fetch_assoc($cq)) {
+            $n = trim((string)$c['employee_name']);
+            if ($n === '' || isset($map[$n])) continue;   // first match wins
+            $map[$n] = ((int)$c['isSupervisor'] === 1)
+                ? ['supervisor', 0]
+                : ['signatory', (int)$c['serial']];
+        }
+    }
+    return $map;
 }
 
 /**
@@ -79,6 +135,7 @@ function render_case_file_table($con, $applicationID, array $threadEvents, array
     $stages  = $segData['stages'];
     $chip    = $segData['chip'];
 
+    $roleByName = cf_role_by_name($con, $applicationID);
     $events = [];
 
     // ── Proposal events, from the segment history ─────────────────────
@@ -107,6 +164,7 @@ function render_case_file_table($con, $applicationID, array $threadEvents, array
         list($__role, $__rbg, $__rfg) = cf_note_role(
             $s['deskLabel'], $s['deskBg'], $s['deskFg'],
             $s['deskKey'] ?? '', (int)($s['deskSerial'] ?? 0));
+        $__action = '';
 
         $events[] = [
             'ts'       => $ts,
@@ -120,6 +178,7 @@ function render_case_file_table($con, $applicationID, array $threadEvents, array
             'title'    => '',
             'proposal' => $proposal,
             'comment'  => '',
+            'action'   => $__action,
             'isSeg'    => true,
         ];
     }
@@ -131,8 +190,21 @@ function render_case_file_table($con, $applicationID, array $threadEvents, array
         if (!empty($ev['extra'])) {
             $body .= '<div class="cf-extra">' . $ev['extra'] . '</div>';
         }
-        list($__role, $__rbg, $__rfg) = cf_note_role(
-            $badge[0] ?? '', $badge[1] ?? '#eee', $badge[2] ?? '#555');
+        $__lbl = $badge[0] ?? '';
+        list($__role, $__rbg, $__rfg, $__matched) = cf_note_role(
+            $__lbl, $badge[1] ?? '#eee', $badge[2] ?? '#555');
+
+        // An action, not a desk — say who they are, and keep the action beside
+        // the remark so nothing is lost.
+        $__action = '';
+        if (!$__matched) {
+            $__who = trim((string)($ev['name'] ?? ''));
+            if ($__who !== '' && isset($roleByName[$__who])) {
+                list($__k, $__sn) = $roleByName[$__who];
+                list($__role, $__rbg, $__rfg) = cf_note_role('', '', '', $__k, $__sn);
+                $__action = $__lbl;
+            }
+        }
 
         $events[] = [
             'ts'       => (int)($ev['ts'] ?? 0),
@@ -146,6 +218,7 @@ function render_case_file_table($con, $applicationID, array $threadEvents, array
             'title'    => trim((string)($ev['title'] ?? '')),
             'proposal' => '',
             'comment'  => $body,
+            'action'   => $__action,
             'isSeg'    => false,
         ];
     }
@@ -188,6 +261,7 @@ function render_case_file_table($con, $applicationID, array $threadEvents, array
             && $e['proposal'] === ''    && $e['comment'] !== '';
         if ($canFold) {
             $merged[count($merged) - 1]['comment'] = $e['comment'];
+            if (!empty($e['action'])) $merged[count($merged) - 1]['action'] = $e['action'];
             if ($merged[count($merged) - 1]['title'] === '') {
                 $merged[count($merged) - 1]['title'] = $e['title'];
             }
@@ -222,7 +296,13 @@ function render_case_file_table($con, $applicationID, array $threadEvents, array
                . ($e['title'] !== '' ? '<div class="cf-title">' . htmlspecialchars($e['title']) . '</div>' : '')
                . '</td>'
                . '<td>' . ($e['proposal'] !== '' ? $e['proposal'] : '<span class="cf-none">—</span>') . '</td>'
-               . '<td class="cf-comment">' . ($e['comment'] !== '' ? $e['comment'] : '<span class="cf-none">—</span>') . '</td>'
+               . '<td class="cf-comment">'
+               . (!empty($e['action'])
+                    ? '<div class="cf-action"><i class="ti tabler-corner-up-left me-1"></i>'
+                      . htmlspecialchars($e['action']) . '</div>'
+                    : '')
+               . ($e['comment'] !== '' ? $e['comment'] : ($e['action'] !== '' ? '' : '<span class="cf-none">—</span>'))
+               . '</td>'
                . '</tr>';
     }
 
@@ -256,6 +336,11 @@ function render_case_file_table($con, $applicationID, array $threadEvents, array
         .cf-delta { margin-top: 5px; font-size: 0.72rem; color: #9aa0b5; }
         .cf-extra { margin-top: 5px; font-size: 0.74rem; color: #6b7280; }
         .cf-comment { color: #3c4257; line-height: 1.7; }
+        .cf-action {
+            display: inline-block; background: #fff3e1; color: #b8651a;
+            font-size: 0.72rem; font-weight: 600; padding: 2px 9px;
+            border-radius: 999px; margin-bottom: 5px;
+        }
         .cf-none { color: #c8ccd8; }
     </style>';
 
