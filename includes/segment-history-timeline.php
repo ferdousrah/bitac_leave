@@ -19,7 +19,7 @@
  *                                       supervisor, the rest are signatories.
  */
 
-if (!function_exists('render_segment_history_timeline')) {
+if (!function_exists('segment_history_stages')) {
 
 /**
  * @param mysqli $con
@@ -27,7 +27,18 @@ if (!function_exists('render_segment_history_timeline')) {
  * @param array  $leaveTypeMap  leaveID => leaveTitle
  * @return string HTML ('' when there is no history)
  */
-function render_segment_history_timeline($con, $applicationID, array $leaveTypeMap) {
+/**
+ * Replays leave_segment_history into one snapshot per desk batch.
+ *
+ * Returns a list of stages in chronological order, each carrying the desk that
+ * made it (label/colour/icon already resolved), the full segment set after that
+ * batch, and what the batch changed. Both the timeline view and the merged
+ * case-file table read from here, so the "which desk was this?" logic — which is
+ * subtle — lives in exactly one place.
+ *
+ * @return array{stages: array, chip: callable} stages is [] when there is no history
+ */
+function segment_history_stages($con, $applicationID, array $leaveTypeMap) {
     $applicationID = (int)$applicationID;
 
     // ── History rows, chronological ────────────────────────────────
@@ -45,7 +56,9 @@ function render_segment_history_timeline($con, $applicationID, array $leaveTypeM
     mysqli_stmt_execute($stmt);
     $rows = mysqli_fetch_all(mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
     mysqli_stmt_close($stmt);
-    if (empty($rows)) return '';
+    // The data function returns the array shape even when empty — its callers
+    // check `stages`, and returning '' here used to be the renderer's contract.
+    if (empty($rows)) return ['stages' => [], 'chip' => function () { return ''; }];
 
     // Applicant, so their own edits are never mistaken for a desk action
     $applicantID = 0;
@@ -252,10 +265,38 @@ function render_segment_history_timeline($con, $applicationID, array $leaveTypeM
         return ['প্রশাসনিক ডেস্ক (ছুটি সম্পাদনা)', '#ede5fa', '#5e3eaa', 'tabler-user-edit'];
     };
 
+
+    // Resolve each stage's desk once, so callers never repeat this logic.
+    foreach ($stages as &$__s) {
+        list($__label, $__bg, $__fg, $__icon) =
+            $deskMeta($__s['level'], $__s['note'], (int)($__s['actor'] ?? 0));
+        $__s['deskLabel'] = $__label;
+        $__s['deskBg']    = $__bg;
+        $__s['deskFg']    = $__fg;
+        $__s['deskIcon']  = $__icon;
+        $__s['total']     = array_sum(array_map(function ($sg) { return (int)($sg['days'] ?? 0); }, $__s['snapshot']));
+    }
+    unset($__s);
+
+    return ['stages' => $stages, 'chip' => $chip];
+}
+
+/**
+ * @param mysqli $con
+ * @param int    $applicationID
+ * @param array  $leaveTypeMap  leaveID => leaveTitle
+ * @return string HTML ('' when there is no history)
+ */
+function render_segment_history_timeline($con, $applicationID, array $leaveTypeMap) {
+    $__data = segment_history_stages($con, $applicationID, $leaveTypeMap);
+    $stages = $__data['stages'];
+    $chip   = $__data['chip'];
+    if (empty($stages)) return '';
+
     // ── Render ─────────────────────────────────────────────────────
     $html = '<div class="seg-timeline">';
     foreach ($stages as $i => $s) {
-        list($deskLabel, $bg, $fg, $icon) = $deskMeta($s['level'], $s['note'], (int)($s['actor'] ?? 0));
+        $deskLabel = $s['deskLabel']; $bg = $s['deskBg']; $fg = $s['deskFg']; $icon = $s['deskIcon'];
         $when  = $s['when'] ? banglaNumber(date('d/m/Y H:i', strtotime($s['when']))) : '';
         $total = 0;
         foreach ($s['snapshot'] as $sg) $total += (int)($sg['days'] ?? 0);
