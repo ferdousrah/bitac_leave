@@ -3,6 +3,7 @@ session_start();
 require_once(__DIR__ . '/../../config/connection.php');
 include(__DIR__ . '/../../bddate.php');
 require_once __DIR__ . '/../../includes/signatory_route_helper.php';
+require_once __DIR__ . '/../../includes/station-leave.php';
 
 $createdBy = $_SESSION['userID'];
 
@@ -731,6 +732,14 @@ if(in_array($file_ext,$extensions)== false){
 		// surfacing anywhere, so refuse it here instead of storing it.
 		if ($chainRowsInserted === 0) {
 			throw new Exception('অনুমোদনের জন্য কোনো স্বাক্ষরকারী পাওয়া যায়নি। আপনি নিজেই এই কেন্দ্রের একমাত্র স্বাক্ষরকারী হলে অ্যাডমিনকে জানান।');
+		}
+
+		// Station leave rides the same transaction: an address that fails
+		// validation rolls the whole application back rather than leaving it
+		// stored without the declaration the applicant made.
+		list($__slOk, $__slMsg) = station_leave_save($con, $leaveApplicationID, (int)$applicationType, $_POST);
+		if (!$__slOk) {
+			throw new Exception($__slMsg);
 		}
 
 		echo "<div class='alert alert-success'><strong>Success!</strong> আপনার ছুটির আবেদনটি অনুমোদনের জন্য যথাযথ কর্তৃপক্ষের কাছে প্রেরণ করা হয়েছে ।</div>";

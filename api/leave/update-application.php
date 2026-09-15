@@ -2,6 +2,7 @@
 session_start();
 require_once(__DIR__ . '/../../config/connection.php');
 require_once(__DIR__ . '/../../function.php');
+require_once(__DIR__ . '/../../includes/station-leave.php');
 
 header('Content-Type: text/plain');
 
@@ -184,6 +185,15 @@ try {
         mysqli_stmt_bind_param($supU, 'i', $editID);
         mysqli_stmt_execute($supU);
         mysqli_stmt_close($supU);
+    }
+
+    // The applicant may change or withdraw the station-leave declaration on a
+    // resubmission; an invalid address undoes the whole edit.
+    list($__slOk, $__slMsg) = station_leave_save($con, $editID, (int)$applicationType, $_POST);
+    if (!$__slOk) {
+        mysqli_rollback($con);
+        echo "<div class='alert alert-danger'><strong>Error:</strong> " . htmlspecialchars($__slMsg) . "</div>";
+        exit;
     }
 
     mysqli_commit($con);

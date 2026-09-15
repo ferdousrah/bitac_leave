@@ -108,6 +108,7 @@ function generatePDFData($leaveApplicationID) {
     try {
         require_once(__DIR__ . '/../../config/connection.php');
         require_once(LIBRARY_PATH . '/number_converter.php');
+        require_once(__DIR__ . '/../../includes/station-leave.php');
 
         // Load mPDF
         $autoload_paths = [
@@ -308,24 +309,35 @@ function generatePDFData($leaveApplicationID) {
             }
         }
 
+        // Station leave: the applicant declared they will go beyond 25 km of the
+        // workplace. It rides along in the reason and in the closing request, and
+        // the addresses print beside the signature.
+        $stationAddresses = [];
+        if ($leaveData['applicationType'] == 1 && (int)($leaveData['stationLeave'] ?? 0) === 1) {
+            $stationAddresses = station_leave_addresses($con, $leaveApplicationID);
+        }
+        $isStation      = !empty($stationAddresses);
+        $stationReason  = $isStation ? ' (স্টেশন লিভের অনুমতিসহ)' : '';
+        $grantPhrase    = $isStation ? 'ছুটি স্টেশন লিভের অনুমতিসহ মঞ্জুর করতে' : 'ছুটি প্রদান করতে';
+
         if ($leaveData['applicationType'] == 1) {
             if ($isMulti) {
                 $html .= '<p>&nbsp;&nbsp;&nbsp;যথাবিহীত সম্মান প্রদর্শনপূর্বক নিবেদন এই যে, আমি নিম্নস্বাক্ষরকারী  ' .
-                         htmlspecialchars($leaveData['leaveApplication']) . '  ' . $segPhrase .
+                         htmlspecialchars($leaveData['leaveApplication']) . $stationReason . '  ' . $segPhrase .
                          ' — সর্বমোট <span class="underline">' . banglaNumber($totalSegDays) . '</span> দিনের ছুটি প্রয়োজন ।</p>';
 
                 $html .= '<p>&nbsp;&nbsp;&nbsp;অতএব উপর্যুক্ত প্রেক্ষিতে আমাকে উপরোল্লিখিত ' .
-                         banglaNumber($totalSegDays) . ' দিনের ছুটি প্রদান করতে মহোদয়ের নিকট বিনীত প্রার্থনা করছি।</p>';
+                         banglaNumber($totalSegDays) . ' দিনের ' . $grantPhrase . ' মহোদয়ের নিকট বিনীত প্রার্থনা করছি।</p>';
             } else {
                 $html .= '<p>&nbsp;&nbsp;&nbsp;যথাবিহীত সম্মান প্রদর্শনপূর্বক নিবেদন এই যে,আমি নিম্নস্বাক্ষরকারী  ' .
-                         htmlspecialchars($leaveData['leaveApplication']) . '  ইং <span class="underline">' .
+                         htmlspecialchars($leaveData['leaveApplication']) . $stationReason . '  ইং <span class="underline">' .
                          banglaNumber(date_format($dateF,"d/m/Y")) . '</span> হইতে <span class="underline">' .
                          banglaNumber(date_format($dateT,"d/m/Y")) . '</span> পর্যন্ত <span class="underline">' .
                          banglaNumber($dateDiff) . '</span> দিনের ' . htmlspecialchars($leaveTypeData['leaveTitle']) . ' ছুটি প্রয়োজন ।</p>';
 
                 $html .= '<p>&nbsp;&nbsp;&nbsp;অতএব উপর্যুক্ত প্রেক্ষিতে আমাকে উপরোল্লিখিত ' .
                          banglaNumber($dateDiff) . ' দিনের ' . htmlspecialchars($leaveTypeData['leaveTitle']) .
-                         ' ছুটি প্রদান করতে মহোদয়ের নিকট বিনীত প্রার্থনা করছি।</p>';
+                         ' ' . $grantPhrase . ' মহোদয়ের নিকট বিনীত প্রার্থনা করছি।</p>';
             }
 
         } else if ($leaveData['applicationType'] == 2) {
@@ -351,7 +363,23 @@ function generatePDFData($leaveApplicationID) {
         $html .= '<p>&nbsp;</p>';
 
         // Applicant signature
-        $html .= '<table><tr><td width="60%">&nbsp;</td><td width="40%" class="signature-section">';
+        // Page's far left, beside the signature: where the applicant will stay.
+        $stationCell = '&nbsp;';
+        if ($isStation) {
+            $stationCell = '<div style="font-size:12px; line-height:1.5;">'
+                         . '<span class="underline">ছুটিকালীন অবস্থানের ঠিকানা</span>'
+                         . '<table style="width:100%; margin-top:4px;">';
+            foreach ($stationAddresses as $i => $sa) {
+                $stationCell .= '<tr>'
+                              . '<td style="width:22px; vertical-align:top; font-size:12px;">' . banglaNumber($i + 1) . '.</td>'
+                              . '<td style="vertical-align:top; font-size:12px; text-align:left;">'
+                              . htmlspecialchars(station_leave_address_line($sa)) . '</td>'
+                              . '</tr>';
+            }
+            $stationCell .= '</table></div>';
+        }
+        $html .= '<table><tr><td width="60%" style="vertical-align:top; text-align:left; padding-right:16px;">'
+               . $stationCell . '</td><td width="40%" class="signature-section">';
         $html .= 'নিবেদক<br>_________________________________<br>';
         
         if (!empty($leaveData['signature'])) {

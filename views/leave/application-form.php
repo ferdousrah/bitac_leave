@@ -1,5 +1,6 @@
 <?php
 require_once(__DIR__ . '/../../includes/header_vuexy.php');
+require_once(__DIR__ . '/../../includes/station-leave.php');
 
 $getAllEmployeeListQ = mysqli_query($con,"select * from `employee_list` where employment_status=1");
 
@@ -71,6 +72,8 @@ mysqli_stmt_close($empStmt);
 $editMode = false;
 $editApp = null;
 $editSegments = [];
+$stationEditAddresses = [];
+$stationGeo = station_geo_tree($con);
 $editSupervisorID = 0;
 $_editIDRaw = $_GET['editID'] ?? '';
 if ($_editIDRaw !== '') {
@@ -117,6 +120,16 @@ if ($_editIDRaw !== '') {
                 $supRow = mysqli_fetch_assoc(mysqli_stmt_get_result($sup));
                 $editSupervisorID = (int)($supRow['signatory'] ?? 0);
                 mysqli_stmt_close($sup);
+                // The station-leave declaration the applicant made last time, so a
+                // resubmission starts from it rather than silently dropping it.
+                foreach (station_leave_addresses($con, $maybe) as $__a) {
+                    $stationEditAddresses[] = [
+                        'division' => (int)$__a['division_id'],
+                        'district' => (int)$__a['district_id'],
+                        'thana'    => (int)$__a['thana_id'],
+                        'detail'   => (string)($__a['detail'] ?? ''),
+                    ];
+                }
             } else {
                 $editApp = null;
             }
@@ -997,6 +1010,159 @@ body h4.fw-bold.mb-0 { font-size: 1.15rem !important; }
                     <textarea class="form-control" name="leaveApplication" id="leaveApplication" rows="6" placeholder="" required></textarea>
                 </div>
             </div>
+
+            <?php if (station_leave_ready($con)): ?>
+            <!-- ── Station leave (regular applications only) ── -->
+            <div id="stationLeaveSection" style="display:none;">
+                <div class="row mb-3">
+                    <label class="col-md-3 col-form-label">
+                        স্টেশন লিভ <span class="text-danger">*</span>
+                    </label>
+                    <div class="col-md-9">
+                        <div class="small mb-2" style="color:#3c4257;">ছুটি নিয়ে কর্মস্থলের ২৫ কিলোমিটারের বাইরে যেতে চান?</div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="stationLeave" id="stationLeave_no" value="0" checked>
+                            <label class="form-check-label" for="stationLeave_no">না</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="stationLeave" id="stationLeave_yes" value="1">
+                            <label class="form-check-label" for="stationLeave_yes">হ্যাঁ</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-3" id="stationAddressBlock" style="display:none;">
+                    <label class="col-md-3 col-form-label">
+                        ছুটিকালীন অবস্থানের ঠিকানা <span class="text-danger">*</span>
+                    </label>
+                    <div class="col-md-9">
+                        <div id="stationAddressRows"></div>
+                        <button type="button" class="btn btn-sm btn-label-primary" id="stationAddRow">
+                            <i class="ti tabler-plus me-1"></i>আরেকটি ঠিকানা যোগ করুন
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <style>
+                .station-row { border: 1px solid #e6e6ef; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; background: #fcfcff; }
+                .station-row-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+                .station-row-num { font-size: 0.78rem; font-weight: 600; color: #5648c4; }
+                .station-row .form-label { font-size: 0.76rem; margin-bottom: 3px; color: #6b7280; }
+            </style>
+
+            <script type="text/javascript">
+            (function bootStationLeave() {
+                if (typeof jQuery === 'undefined' || !jQuery.fn) return setTimeout(bootStationLeave, 20);
+                var $ = jQuery;
+                if (!$('#stationLeaveSection').length || $('#stationLeaveSection').data('bound')) return;
+                $('#stationLeaveSection').data('bound', true);
+
+                var GEO  = <?= json_encode($stationGeo, JSON_UNESCAPED_UNICODE) ?>;
+                var EDIT = <?= json_encode($stationEditAddresses, JSON_UNESCAPED_UNICODE) ?>;
+                var EDIT_FLAG = <?= $editMode ? (int)($editApp['stationLeave'] ?? 0) : 0 ?>;
+
+                function bn(n) { return String(n).replace(/[0-9]/g, function (d) { return '০১২৩৪৫৬৭৮৯'[d]; }); }
+
+                function options(list, keyIdx, parent, selected, placeholder) {
+                    var html = '<option value="">' + placeholder + '</option>';
+                    list.forEach(function (r) {
+                        if (keyIdx !== null && r[keyIdx] !== parent) return;
+                        var name = r[r.length - 1];
+                        html += '<option value="' + r[0] + '"' + (r[0] === selected ? ' selected' : '') + '>'
+                              + $('<div>').text(name).html() + '</option>';
+                    });
+                    return html;
+                }
+
+                function renumber() {
+                    $('#stationAddressRows .station-row').each(function (i) {
+                        $(this).find('.station-row-num').text('ঠিকানা ' + bn(i + 1));
+                    });
+                    $('#stationAddressRows .station-remove').toggle($('#stationAddressRows .station-row').length > 1);
+                }
+
+                function addRow(pre) {
+                    pre = pre || {};
+                    var div = pre.division || 0, dist = pre.district || 0, th = pre.thana || 0;
+                    var $row = $(
+                        '<div class="station-row">' +
+                          '<div class="station-row-head">' +
+                            '<span class="station-row-num"></span>' +
+                            '<button type="button" class="btn btn-sm btn-icon btn-label-danger station-remove" title="ঠিকানা মুছুন"><i class="ti tabler-trash"></i></button>' +
+                          '</div>' +
+                          '<div class="row g-2">' +
+                            '<div class="col-md-4"><label class="form-label">বিভাগ</label>' +
+                              '<select class="form-select form-select-sm st-division" name="stationDivision[]"></select></div>' +
+                            '<div class="col-md-4"><label class="form-label">জেলা</label>' +
+                              '<select class="form-select form-select-sm st-district" name="stationDistrict[]"></select></div>' +
+                            '<div class="col-md-4"><label class="form-label">থানা / উপজেলা</label>' +
+                              '<select class="form-select form-select-sm st-thana" name="stationThana[]"></select></div>' +
+                            '<div class="col-12"><label class="form-label">বাড়ি / গ্রাম / C/O (ঐচ্ছিক)</label>' +
+                              '<input type="text" class="form-control form-control-sm st-detail" name="stationDetail[]" maxlength="255" placeholder="যেমন: বাড়ি নং ১২, গ্রাম- চরপাড়া, C/O- আব্দুল করিম"></div>' +
+                          '</div>' +
+                        '</div>');
+
+                    // Selects are never disabled: a disabled field is left out of the
+                    // POST, which would misalign the four parallel arrays server-side.
+                    $row.find('.st-division').html(options(GEO.divisions, null, null, div, '— বিভাগ —'));
+                    $row.find('.st-district').html(options(GEO.districts, 1, div, dist, '— জেলা —'));
+                    $row.find('.st-thana').html(options(GEO.thanas, 1, dist, th, '— থানা —'));
+                    $row.find('.st-detail').val(pre.detail || '');
+
+                    $('#stationAddressRows').append($row);
+                    renumber();
+                    syncRequired();
+                    return $row;
+                }
+
+                function syncRequired() {
+                    var on = $('#stationLeave_yes').is(':checked') && String($('#applicationType').val()) === '1';
+                    $('#stationAddressBlock').toggle(on);
+                    if (on && !$('#stationAddressRows .station-row').length) { addRow(); return; }
+                    $('#stationAddressRows select').prop('required', on);
+                }
+
+                // Regular applications only.
+                function syncType() {
+                    var isRegular = String($('#applicationType').val()) === '1';
+                    $('#stationLeaveSection').toggle(isRegular);
+                    // Reset only when another type is actually chosen — on an edit the
+                    // type is still blank here until the prefill sets it.
+                    if (!isRegular && $('#applicationType').val()) $('#stationLeave_no').prop('checked', true);
+                    syncRequired();
+                }
+
+                // Namespaced and re-bound, so a Turbo revisit never stacks handlers.
+                $(document)
+                    .off('.stationLeave')
+                    // Division → its districts; district → its thanas. A change upstream
+                    // clears everything below it, so a stale thana can never be sent.
+                    .on('change.stationLeave', '#stationAddressRows .st-division', function () {
+                        var $r = $(this).closest('.station-row'), v = parseInt($(this).val(), 10) || 0;
+                        $r.find('.st-district').html(options(GEO.districts, 1, v, 0, '— জেলা —'));
+                        $r.find('.st-thana').html(options(GEO.thanas, 1, -1, 0, '— থানা —'));
+                    })
+                    .on('change.stationLeave', '#stationAddressRows .st-district', function () {
+                        var $r = $(this).closest('.station-row'), v = parseInt($(this).val(), 10) || 0;
+                        $r.find('.st-thana').html(options(GEO.thanas, 1, v, 0, '— থানা —'));
+                    })
+                    .on('click.stationLeave', '#stationAddressRows .station-remove', function () {
+                        $(this).closest('.station-row').remove();
+                        renumber();
+                    })
+                    .on('click.stationLeave', '#stationAddRow', function () { addRow(); })
+                    .on('change.stationLeave', 'input[name="stationLeave"]', syncRequired)
+                    .on('change.stationLeave', '#applicationType', syncType);
+
+                if (EDIT_FLAG === 1 && EDIT.length) {
+                    $('#stationLeave_yes').prop('checked', true);
+                    EDIT.forEach(function (a) { addRow(a); });
+                }
+                syncType();
+            })();
+            </script>
+            <?php endif; ?>
 
             <div class="row mb-3">
                 <label class="col-md-3 col-form-label" for="leaveFile">
@@ -2068,11 +2234,15 @@ $(document).ready(function() {
                         // as plain text from the API when something explodes server-side.
                         var phpErrorRx = /(Fatal error|Parse error|Call to undefined|Uncaught\s+\w*Error|Warning:|Notice:|<b>(?:Fatal error|Parse error|Warning|Notice)<\/b>)/i;
                         var hasPhpError = phpErrorRx.test(trimmed);
+                        // The endpoints report a rejected submission as an alert-danger
+                        // div. Treating that as success showed "সফলভাবে প্রেরণ করা
+                        // হয়েছে" and cleared the form for an application never saved.
+                        var hasAppError = /alert-danger/.test(trimmed);
 
-                        if (data == 0 || hasPhpError) {
+                        if (data == 0 || hasPhpError || hasAppError) {
                             // Strip HTML tags to extract a clean error message
-                            var errMsg = hasPhpError
-                                ? trimmed.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 400)
+                            var errMsg = (hasPhpError || hasAppError)
+                                ? trimmed.replace(/<[^>]+>/g, ' ').replace(/^\s*Error:\s*/i, '').replace(/\s+/g, ' ').trim().slice(0, 400)
                                 : 'একটি ত্রুটি হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।';
                             Swal.fire({
                                 title: 'ত্রুটি',
