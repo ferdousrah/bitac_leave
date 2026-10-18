@@ -478,6 +478,68 @@ function getEmployeeLeaveInfo($employeeID, $asOfDate = null) {
 }
 
 /**
+ * casualLeaveOverdraw($employeeID, $segments, $excludeAppID)
+ *
+ * The yearly নৈমিত্তিক allowance has to cover what is already approved AND
+ * what is still waiting in the chain — otherwise 10 approved + 7 pending + a
+ * fresh 5 sails through as 22 against a 20-day year. Counted per calendar
+ * year of each segment's dateFrom, the same basis getEmployeeLeaveInfo() uses.
+ *
+ * Returned applications (status=3) are not held against the balance: they are
+ * checked here again on resubmission, with $excludeAppID set to themselves.
+ *
+ * @param array $segments  each ['leaveType' => int, 'dateFrom' => Y-m-d, 'days' => int]
+ * @return string|null     Bangla error message, or null when the request fits
+ */
+function casualLeaveOverdraw($employeeID, array $segments, $excludeAppID = 0) {
+    global $con, $casualBalance;
+
+    $requestedByYear = [];
+    foreach ($segments as $s) {
+        if ((int)$s['leaveType'] !== 8) continue;
+        $y = (int)date('Y', strtotime($s['dateFrom']));
+        $requestedByYear[$y] = ($requestedByYear[$y] ?? 0) + (int)$s['days'];
+    }
+
+    $emp = (int)$employeeID;
+    $ex  = (int)$excludeAppID;
+    $bn  = fn($n) => strtr((string)$n, ['0'=>'০','1'=>'১','2'=>'২','3'=>'৩','4'=>'৪','5'=>'৫','6'=>'৬','7'=>'৭','8'=>'৮','9'=>'৯']);
+
+    foreach ($requestedByYear as $year => $requested) {
+        $start = "$year-01-01";
+        $end   = "$year-12-31";
+
+        $r = mysqli_fetch_assoc(mysqli_query($con,
+            "SELECT COALESCE(SUM(CASE WHEN la.status = 1 THEN s.days END), 0) AS approved,
+                    COALESCE(SUM(CASE WHEN la.status = 0 THEN s.days END), 0) AS pending
+             FROM leave_application_segments s
+             INNER JOIN leave_applications la ON la.dataID = s.applicationID
+             WHERE la.applicantID = '$emp' AND la.status IN (0, 1) AND la.dataID <> $ex
+               AND s.leaveType = 8 AND (s.kind = 'proposed' OR s.kind IS NULL)
+               AND s.dateFrom BETWEEN '$start' AND '$end'"));
+        $deducted = (int)(mysqli_fetch_assoc(mysqli_query($con,
+            "SELECT COALESCE(SUM(leaveDeduction), 0) AS v FROM leave_deduction_history
+             WHERE employeeID = '$emp' AND leaveID = '3' AND isApproved = 1
+               AND createDate BETWEEN '$start' AND '$end'"))['v'] ?? 0);
+        $added = (int)(mysqli_fetch_assoc(mysqli_query($con,
+            "SELECT COALESCE(SUM(leaveAddition), 0) AS v FROM leave_addition_history
+             WHERE employeeID = '$emp' AND leaveID = '3' AND isApproved = 1
+               AND createDate BETWEEN '$start' AND '$end'"))['v'] ?? 0);
+
+        $approved  = max(0, (int)$r['approved'] + $deducted - $added);
+        $pending   = (int)$r['pending'];
+        $remaining = max(0, $casualBalance - $approved - $pending);
+
+        if ($approved + $pending + $requested > $casualBalance) {
+            return "<strong>নৈমিত্তিক ছুটির ব্যালেন্স অপর্যাপ্ত ({$bn($year)}):</strong> বছরে সর্বোচ্চ {$bn($casualBalance)} দিন। "
+                 . "অনুমোদিত {$bn($approved)} দিন, অনুমোদনের অপেক্ষায় {$bn($pending)} দিন — "
+                 . "আর আবেদন করা যাবে সর্বোচ্চ {$bn($remaining)} দিন, এই আবেদনে চাইছেন {$bn($requested)} দিন।";
+        }
+    }
+    return null;
+}
+
+/**
  * Generate readable leave application number.
  * Format: BITAC/{year}/{dataID}  (e.g., BITAC/2026/15)
  *

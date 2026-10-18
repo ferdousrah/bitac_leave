@@ -87,6 +87,14 @@ foreach ($segmentTypes as $i => $tid) {
 }
 if (count($normalizedSegs) === 0) { echo 0; exit; }
 
+// Yearly CL allowance, leaving this application's own old days out of the count
+$clErr = casualLeaveOverdraw($existing['applicantID'], array_map(
+    fn($s) => ['leaveType' => $s['type'], 'dateFrom' => $s['from'], 'days' => $s['days']],
+    $normalizedSegs), $editID);
+if ($clErr !== null) {
+    exit("<div class='alert alert-danger'>$clErr</div>");
+}
+
 $leaveType = $normalizedSegs[0]['type']; // primary type = first segment
 
 // ── Handle new attachment (optional — keep old if no new file) ──

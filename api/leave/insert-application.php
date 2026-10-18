@@ -173,6 +173,11 @@ foreach ($segments as $i => $s) {
     }
 }
 
+// Yearly CL allowance: approved + still-pending + this request must fit
+if ($hasCL && ($clErr = casualLeaveOverdraw($employeeID, $segments)) !== null) {
+    exit("<div class='alert alert-danger'>$clErr</div>");
+}
+
 // Date overlap among segments
 for ($a = 0; $a < count($segments); $a++) {
     for ($b = $a + 1; $b < count($segments); $b++) {
