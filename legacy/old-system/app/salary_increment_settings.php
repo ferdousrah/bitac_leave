@@ -1,0 +1,397 @@
+<?php
+include('header.php');
+
+
+function Bengali_DTN($NRS){
+	$englDTN = array
+			('1','2','3','4','5','6','7','8','9','0',
+			'Saturday','Sunday','Monday','Tuesday','Wednesday','Thursday','Friday',
+			'Sat','Sun','Mon','Tue','Wed','Thu','Fri',
+			'am','pm','at','st','nd','rd','th',
+			'January','February','March','April','May','June','July','August','September','October','November','December',
+			'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec');
+			$bangDTN = array
+			('১','২','৩','৪','৫','৬','৭','৮','৯','০',
+			'শনিবার','রবিবার','সোমবার','মঙ্গলবার','বুধবার','বৃহস্পতিবার','শুক্রবার',
+			'শনি','রবি','সোম','মঙ্গল','বুধ','বৃহঃ','শুক্র',
+			'পূর্বাহ্ণ','অপরাহ্ণ','','','','','',
+			'জানুয়ারি','ফেব্রুয়ারি','মার্চ','এপ্রিল','মে','জুন','জুলাই','আগস্ট','সেপ্টেম্বর','অক্টোবর','নভেম্বর','ডিসেম্বর',
+			'জানু','ফেব্রু','মার্চ','এপ্রি','মে','জুন','জুলা','আগ','সেপ্টে','অক্টো','নভে','ডিসে');
+			$converted = str_replace($bangDTN, $englDTN, $NRS);
+			return $converted; 
+			}
+
+
+
+
+
+
+$getIncrementSettings = mysqli_query($con,"select * from increment_settings where dataID=1");
+$getIncrementSettingsRW = mysqli_fetch_assoc($getIncrementSettings);
+
+$getEmployeeListQ = mysqli_query($con, "select * from employee_list where employment_status=1");
+
+$getEmployeeListQ2 = mysqli_query($con, "select * from employee_list where employment_status=1");
+
+
+
+$getEmployeeListQ4 = mysqli_query($con, "select user_list.dataID, user_list.employee_id, user_list.user_type, employee_list.id, employee_list.employee_name, employee_list.employee_id from user_list inner join employee_list on user_list.employee_id=employee_list.id where user_list.user_type=2");
+
+
+$getApprovalPersonsQ = mysqli_query($con, "select * from salary_increment_approvals order by approvalSL asc");
+
+
+?>
+
+
+
+
+
+<div class="main-panel">
+        <div class="main-content" style="clear: left;">
+          <div class="content-wrapper"><!--Invoice template starts-->
+<div class="row">
+    <div class="col-md-12">
+        <h4>বেতন বৃদ্ধির সেটিংস</h4>
+    </div>
+</div>
+<section class="invoice-template">
+    <div class="card">
+        <div class="card-body p-3">
+            <div id="invoice-template" class="card-block">
+                
+                
+                
+                <!-- Invoice Footer -->
+                <div id="invoice-footer">
+                    <div class="row">
+                        <div class="col-md-12 col-sm-12">
+                            
+
+
+
+
+                        <div class="px-3">
+
+						
+	                    <form class="form form-horizontal"  name="form" id="form" enctype="multipart/form-data">
+
+                        					 
+	                    	<div class="form-body">
+	                    		<h4 class="form-section"><i class="ft-droplet"></i> বেতন বৃদ্ধির ফরম</h4>
+			                    <div class="form-group row">
+	                            	<label class="col-md-3 label-control" for="software_title">বেতন বৃদ্ধির তারিখ: </label>
+		                            <div class="col-md-9">
+		                            	<input type="date" id="salary_increment_date" class="form-control"  name="salary_increment_date" value="<?php echo $getIncrementSettingsRW['salary_increment_date']; ?>">
+		                            </div>
+		                        </div>
+
+								<div class="form-group row">
+	                            	<label class="col-md-3 label-control" for="software_title">প্রতি: </label>
+		                            <div class="col-md-9">
+
+										<select class="applicationTo" style="width: 100%;" name="applicationTo" id="applicationTo">
+											<option value=''></option>
+											<?php while($aptRow = mysqli_fetch_array($getEmployeeListQ)){ ?>
+
+												<option <?php if($aptRow['id'] == $getIncrementSettingsRW['applicationTo']){ echo "selected='selected'"; } ?> value="<?php echo $aptRow['id']; ?>"><?php echo Bengali_DTN($aptRow['employee_id']).' - '.$aptRow['employee_name']; ?></option>
+
+
+											<?php } ?>
+
+										</select>
+
+		                            </div>
+		                        </div>
+
+								
+								
+								
+
+								<h4 class="form-section"><i class="ft-file-text"></i> অফিস আদেশ</h4>
+
+		                        <div class="form-group row">
+	                            	<label class="col-md-3 label-control" for="software_title">ফাইল নং: </label>
+		                            <div class="col-md-9">
+		                            	<input type="text" id="fileNo" class="form-control"  name="fileNo" value="<?php echo $getIncrementSettingsRW['fileNo']; ?>">
+		                            </div>
+		                        </div>
+
+								<div class="form-group row">
+	                            	<label class="col-md-3 label-control" for="copyTo">অনুলিপি: </label>
+		                            <div class="col-md-9">
+
+										<select class="copyTo" name="copyTo[]" style="width: 100%;" id="copyTo" multiple="multiple">
+											<option value=''></option>
+											<?php while($aptRow = mysqli_fetch_array($getEmployeeListQ2)){ 
+
+												$checkInCopyQ = mysqli_query($con, "select * from salary_notice_copy where employeeID='$aptRow[id]' and refFor=0");
+												$checkInCopyQNumRows = mysqli_num_rows($checkInCopyQ);
+												?>
+
+												<option <?php if($checkInCopyQNumRows > 0){ echo "selected"; } ?> value="<?php echo $aptRow['id']; ?>"><?php echo Bengali_DTN($aptRow['employee_id']).' - '.$aptRow['employee_name']; ?></option>
+
+											<?php } ?>
+
+										</select>
+
+		                            </div>
+		                        </div>
+
+
+								<h4 class="form-section"><i class="ft-file-text"></i> অফিস আদেশকনটেন্ট</h4>
+
+								<div class="form-group row">
+		                            <div class="col-md-12">
+		                            	<textarea class="form-control" name="notice_content"><?php echo $getIncrementSettingsRW['notice_content']; ?></textarea>
+		                            </div>
+		                        </div>
+
+
+
+
+								<h4 class="form-section"><i class="ft-file-text"></i>অনুমোদনকারী কর্মকর্তাগণ</h4>
+
+								<table id="tbl" border="1" width="100%">
+									<thead>
+										<tr >
+											<th class="text-center" height="50" width="20">
+												ক্রমিক নং
+											</th>    
+											
+											<th class="text-center" height="50" width="150">
+												কর্মকর্তার নাম ও পদবী
+											</th>
+
+											<th class="text-center" height="50" width="150">
+												অনুমতির ক্রমিক নং 
+											</th>											
+											
+																				
+											
+										</tr>
+									</thead>
+									<tbody>
+
+										<?php 
+										  $m = 1;
+										  while($dataRow = mysqli_fetch_array($getApprovalPersonsQ)){
+
+											  $getEmployeeListQ3 = mysqli_query($con, "select * from employee_list where employment_status=1");
+
+											  $getUsersQ = mysqli_query($con, "select * from user_list where user_type=2");
+
+										?>
+										<tr id='addr0'>
+
+											<td height='40' style="text-align:center">
+											 <?php echo $m; ?>				
+											</td>
+
+											<td height='40' style="text-align:center">
+											 <select class="js-example-basic-single" style="width: 100%;" name="signatory[]">
+												<option value=''></option>
+												<?php while($empRow = mysqli_fetch_array($getUsersQ)){ 
+												
+													$getEmployeeDetailsQ = mysqli_query($con, "select * from employee_list where id='$empRow[employee_id]'");
+													$getEmployeeDetailsQRW = mysqli_fetch_assoc($getEmployeeDetailsQ);
+												
+												?>
+
+												<option <?php if($dataRow['employeeID'] == $empRow['dataID']){ echo "selected"; } ?> value='<?php echo $empRow['dataID']; ?>'><?php echo Bengali_DTN($getEmployeeDetailsQRW['employee_id']).' - '.$getEmployeeDetailsQRW['employee_name']; ?></option>
+
+												<?php } ?>
+											 </select>				
+											</td>
+
+											<td height='40' style="text-align:center">
+											 <input type="number" class="form-control" name="serial[]" value="<?php echo $dataRow['approvalSL']; ?>" />				
+											</td>
+
+										</tr>
+
+										<?php $m++; } ?>
+
+										<tr id='addr2'></tr>
+
+
+									</tbody>
+								</table>
+
+										
+
+								<div class="row" style="margin-top: 20px;">
+								<div class="col-md-4">
+								&nbsp;
+								</div>
+								<div class="col-md-6">
+								&nbsp;</div>
+
+								<div class="col-md-2" style="text-align: right;">
+								<a id="add_row" class="btn btn-success  btn-fab"><i class="material-icons">add</i></a>&nbsp;&nbsp;&nbsp;&nbsp;<a id='delete_row' class="btn btn-danger  btn-fab"><i class="material-icons">clear</i></a>
+								</div>
+								</div>
+
+								
+
+
+	                        <div class="form-actions">
+	                            <button type="button" onClick="window.history.go(-1); return false;" class="btn btn-raised btn-warning mr-1">
+	                            	<i class="ft-x"></i> Cancel
+	                            </button>
+	                            <button type="submit" name="submit" id="submit" class="btn btn-raised btn-primary">
+	                                <i class="fa fa-check-square-o"></i> Save
+	                            </button>
+	                        </div>
+	                    </form>
+	                </div>
+
+
+
+
+
+                        </div>
+                        
+                    </div>
+                </div>
+                <!--/ Invoice Footer -->
+            </div>
+        </div>
+    </div>
+</section>
+<!--Invoice template ends-->
+          </div>
+        </div>
+
+        
+		
+</div>
+
+
+
+
+
+
+
+<?php
+include('footer.php');
+
+?>
+
+
+
+
+<script type="text/javascript">
+
+//table.row( 100 ).scrollTo();
+
+$('.applicationTo').select2();
+
+$('.copyTo').select2();
+
+
+$('.js-example-basic-single').select2();
+
+
+
+var i=$('table tr').length;
+$("#add_row").on('click',function(){
+
+	i++;
+	
+	html = '<tr>';
+
+	html += "<td style='text-align:center;'>"+(i - 2)+"</td>";
+
+	html += "<td height='40' style='text-align:center'><select class='js-example-basic-single"+i+"' style='width:100%;' name='signatory[]' id='signatory_"+i+"' required><option value=''></option><?php while($cRow2=mysqli_fetch_array($getEmployeeListQ4)){?><option value='<?php echo $cRow2['dataID']; ?>'><?php echo Bengali_DTN($cRow2['employee_id']).' - '.$cRow2['employee_name']; ?></option><?php } ?></select></td>";
+		
+	html += "<td style='text-align:center'><input type='number' name='serial[]' id='serial_"+i+"' placeholder='' class='form-control' value='"+(i - 2)+"' required /></td>";
+	
+	html += '</tr>';
+	$('table').append(html);
+	
+
+	$('.js-example-basic-single'+i).select2();
+
+	
+});
+
+
+$("#delete_row").click(function(){
+	var i=$('table tr').length;
+    	 
+		 $("#tbl tr:last").remove();
+
+           
+
+
+	 });
+
+
+
+$(document).ready(function() {
+	var form = $('#form'); // contact form
+	var submit = $('#submit');	// submit button
+
+	// form submit event
+	form.on('submit', function(e) {
+		e.preventDefault(); // prevent default form submit
+		// sending ajax request through jQuery
+		$.ajax({
+			url: 'save_increment_configuration_data.php', // form action url
+			type: 'POST', // form submit method get/post
+			dataType: 'html', // request type html/json/xml
+			data: new FormData(this), // serialize form data
+			contentType: false,
+            cache: false,
+            processData:false,
+			beforeSend: function() {
+				
+				submit.html('<i class="fa fa-spinner fa-spin"></i> Signing in, please wait'); // change submit button text
+				setTimeout(200000000000000000);
+
+
+			},
+			success: function(data) {
+
+				//alert(data);
+				
+
+                if(data==1)
+				{
+				
+				    toastr.success('Data Saved Successfully');
+
+
+				    
+
+					//window.location='dashboard?mainslug=dashboard';
+				
+				}
+				else
+				{
+				
+				    toastr.error('Error!!');
+				
+				
+				}
+
+
+
+
+				//form.trigger('reset'); // reset form
+				submit.html('Login Now'); // reset submit button text
+			},
+			error: function(e) {
+				console.log(e)
+			}
+		});
+	});
+});
+
+
+
+
+
+
+</script>

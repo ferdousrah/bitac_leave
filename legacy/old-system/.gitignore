@@ -1,0 +1,5 @@
+# Installed by composer in the Docker build
+app/vendor/
+# Runtime data lives in Docker volumes, never in git
+app/uploads/*
+app/pdfs/*

@@ -1,0 +1,60 @@
+# Old BITAC software — Docker Compose / Coolify service.
+# Coolify resource with base directory /legacy/old-system (this folder).
+#
+# Coolify: enable "Connect to Predefined Network" on this resource AND on the
+# new leave system, so the new one can reach legacy-api/ over the internal
+# network by this app's full container name (shown in Coolify, app-<uuid>).
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # Coolify's proxy routes the old domain here; no host port.
+    expose:
+      - "80"
+    environment:
+      DB_HOST: db
+      DB_USER: ${DB_USER:-bitac_old}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME:-bitac_db}
+      # Shared secret for legacy-api/leave-totals.php; the new system's
+      # LEGACY_API_TOKEN must hold the same value.
+      LEGACY_API_TOKEN: ${LEGACY_API_TOKEN}
+    volumes:
+      # Not in git or the image: copy the VPS's uploads/ in once (README).
+      - old_uploads:/var/www/html/uploads
+      - old_pdfs:/var/www/html/pdfs
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    # 8.0 (the VPS's version) is past end of life; 8.4 is the LTS line.
+    image: mysql:8.4
+    restart: unless-stopped
+    command:
+      # Signature/photo blobs make single rows ~1 MB; the dump needs more
+      # than the 64 MB default to import.
+      - --max_allowed_packet=256M
+      # Match the VPS before going live: run SELECT @@GLOBAL.sql_mode there
+      # and set it here if it differs from MySQL's default.
+      # - --sql-mode=...
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME:-bitac_db}
+      MYSQL_USER: ${DB_USER:-bitac_old}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - old_db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 60s
+
+volumes:
+  old_uploads:
+  old_pdfs:
+  old_db:

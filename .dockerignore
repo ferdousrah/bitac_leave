@@ -35,3 +35,6 @@ backup_*
 # Build artifacts
 dist/
 build/
+
+# The old BITAC system is its own Coolify resource; never part of this image
+legacy/

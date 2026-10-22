@@ -1,0 +1,13 @@
+# Build context is legacy/old-system; only app/ is copied in.
+app/vendor
+app/uploads
+app/pdfs
+**/*.bak
+**/*.zip
+**/*.sql
+**/*.sql.gz
+**/*.log
+README.md
+docker-compose.yml
+.dockerignore
+.env
