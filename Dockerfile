@@ -1,6 +1,12 @@
-# BITAC Leave System — PHP 8.2 + Apache image
+# BITAC Leave System — PHP 8.5 + Apache image
 # Designed for Coolify / Docker Compose deployment
-FROM php:8.2-apache
+#
+# Pinned to an exact patch release: a floating tag (php:8.5-apache) can be
+# served from the build cache long after a security fix ships. 8.5.12 fixes
+# CVE-2026-109618 / CVE-2026-109619 (unauthenticated RCE, 21 Oct 2026). Bump
+# the patch number on every PHP security release; 8.5 itself is supported
+# until 31 Dec 2029.
+FROM php:8.5.12-apache
 
 # Install system dependencies + PHP extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -56,27 +56,19 @@ if ($url === '' || $token === '') {
     $fail('পুরনো সিস্টেমের API কনফিগার করা হয়নি (LEGACY_API_URL / LEGACY_API_TOKEN)।');
 }
 
-$body = false; $httpCode = 0; $netError = '';
-if (function_exists('curl_init')) {
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HTTPHEADER     => ['X-Api-Token: ' . $token, 'Accept: application/json'],
-        CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_TIMEOUT        => 60,
-    ]);
-    $body     = curl_exec($ch);
-    $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $netError = curl_error($ch);
-    curl_close($ch);
-} else {
-    $ctx  = stream_context_create(['http' => [
-        'header' => "X-Api-Token: $token\r\nAccept: application/json\r\n",
-        'timeout' => 60, 'ignore_errors' => true,
-    ]]);
-    $body = @file_get_contents($url, false, $ctx);
-    if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) $httpCode = (int)$m[1];
+if (!function_exists('curl_init')) {
+    $fail('সার্ভারে PHP curl extension নেই।');
 }
+$ch = curl_init($url);
+curl_setopt_array($ch, [
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HTTPHEADER     => ['X-Api-Token: ' . $token, 'Accept: application/json'],
+    CURLOPT_CONNECTTIMEOUT => 10,
+    CURLOPT_TIMEOUT        => 60,
+]);
+$body     = curl_exec($ch);
+$httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$netError = curl_error($ch);
 
 if ($body === false || $body === '') {
     $fail('পুরনো সিস্টেমে সংযোগ করা যায়নি' . ($netError !== '' ? " ($netError)" : '') . '।');
