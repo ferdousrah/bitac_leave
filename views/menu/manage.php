@@ -268,7 +268,7 @@ foreach ($flat as $s) if ((int)$s['parent_id'] > 0 && isset($flat[(int)$s['paren
             'parent' => (int)$s['parent_id'],
             'name'   => $s['submodule_name'],
         ];
-    })), JSON_UNESCAPED_UNICODE) ?>;
+    }, $flat)), JSON_UNESCAPED_UNICODE) ?>;
 
     var modal = new bootstrap.Modal(document.getElementById('subModal'));
 
