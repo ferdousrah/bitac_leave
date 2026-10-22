@@ -28,6 +28,8 @@ services:
       DB_NAME: ${DB_NAME:-bitac_leave}
       APP_BASE_URL: ${APP_BASE_URL:-}
       APP_PROTOCOL: ${APP_PROTOCOL:-https}
+      LEGACY_API_URL: ${LEGACY_API_URL:-}
+      LEGACY_API_TOKEN: ${LEGACY_API_TOKEN:-}
     volumes:
       # Persist uploads (attachments) across deploys
       - bitac_uploads:/var/www/html/uploads

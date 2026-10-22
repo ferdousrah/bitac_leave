@@ -303,6 +303,16 @@ function getEmployeeLeaveInfo($employeeID, $asOfDate = null) {
         'extraOrdinaryLeave' => 0, 'avgSalary' => 0, 'halfAvgSalary' => 0,
     ];
 
+    // ── old BITAC software (legacy_leave_totals) ──────────────────────
+    // Each old figure joins the term it would have been had the record lived
+    // here: prev → $prev, applications → $app*, deductions → $deduct*.
+    // Nothing synced yet means every one of these is 0.
+    $legacyYear = (int)substr($casualStart, 0, 4);
+    $L = fn($source, $bucket, $year = 0) => legacyLeaveDays($employeeID, $source, $bucket, $year);
+    foreach (legacyPrevColumns() as $col => $bucket) {
+        $prev[$col] = ($prev[$col] ?? 0) + $L('prev', $bucket);
+    }
+
     // ── manual deduction history ──────────────────────────────────────
     $deductQ = function($leaveID, $dateFilter = '') use ($con, $employeeID, $casualStart, $casualEnd) {
         $where = "employeeID='$employeeID' AND leaveID='$leaveID' AND isApproved=1";
@@ -311,13 +321,13 @@ function getEmployeeLeaveInfo($employeeID, $asOfDate = null) {
         return (int)$r['v'];
     };
 
-    $deductFullAvg    = $deductQ('1');
-    $deductHalfAvg    = $deductQ('2');
-    $deductCasual     = $deductQ('3', true);
-    $deductWithoutPay = $deductQ('4');
-    $deductOptional   = $deductQ('5', true);
-    $deductExtraOrd   = $deductQ('10');
-    $deductUndeduct   = $deductQ('6');
+    $deductFullAvg    = $deductQ('1')        + $L('deduction', 1);
+    $deductHalfAvg    = $deductQ('2')        + $L('deduction', 2);
+    $deductCasual     = $deductQ('3', true)  + $L('deduction', 3, $legacyYear);
+    $deductWithoutPay = $deductQ('4')        + $L('deduction', 4);
+    $deductOptional   = $deductQ('5', true)  + $L('deduction', 5, $legacyYear);
+    $deductExtraOrd   = $deductQ('10')       + $L('deduction', 10);
+    $deductUndeduct   = $deductQ('6')        + $L('deduction', 6);
 
     // ── manual addition history ───────────────────────────────────────
     // Office-order additions CREDIT the employee's balance. Internally we
@@ -363,14 +373,15 @@ function getEmployeeLeaveInfo($employeeID, $asOfDate = null) {
     // Map: segment leaveType (= leave_types.leaveID) — values used per BSR leave types
     //   1 = পূর্ণ গড় বেতনে, 2 = অর্ধ-গড় বেতনে, 5 = সংগনিরোধ, 6 = প্রসূতি,
     //   7 = ঐচ্ছিক, 8 = নৈমিত্তিক, 9 = বিনা বেতনে, 10 = অসাধারণ, 19 = অক্ষমতাজনিত
-    $appFullAvg    = $appSum(1);                                 // পূর্ণ গড়
-    $appHalfAvg    = $appSum(2, '', 2);                          // অর্ধ-গড় (*2: half-avg days count double)
-    $appHalfAvgActual = $appSum(2);                              // actual days (no multiplier) — for display
-    $appCasual     = $appSum(8, true);                           // নৈমিত্তিক (with date filter)
-    $appWithoutPay = $appSum(9);                                 // বিনা বেতনে
-    $appExtraOrd   = $appSum(10);                                // অসাধারণ
-    $appOptional   = $appSum(7, true);                           // ঐচ্ছিক (with date filter)
-    $appUndeduct   = $appSum(5) + $appSum(6) + $appSum(19);      // সংগনিরোধ + প্রসূতি + অক্ষমতাজনিত (undeductible)
+    $appFullAvg    = $appSum(1)        + $L('application', 1);        // পূর্ণ গড়
+    $appHalfAvg    = $appSum(2, '', 2) + $L('application', 2) * 2;    // অর্ধ-গড় (*2: half-avg days count double)
+    $appHalfAvgActual = $appSum(2)     + $L('application', 2);        // actual days (no multiplier) — for display
+    $appCasual     = $appSum(8, true)  + $L('application', 3, $legacyYear); // নৈমিত্তিক (with date filter)
+    $appWithoutPay = $appSum(9)        + $L('application', 4);        // বিনা বেতনে
+    $appExtraOrd   = $appSum(10)       + $L('application', 10);       // অসাধারণ
+    $appOptional   = $appSum(7, true)  + $L('application', 5, $legacyYear); // ঐচ্ছিক (with date filter)
+    $appUndeduct   = $appSum(5) + $appSum(6) + $appSum(19)            // সংগনিরোধ + প্রসূতি + অক্ষমতাজনিত (undeductible)
+                   + $L('application', 6);
 
     // ── used totals (net of additions) ────────────────────────────────
     // Office-order additions reduce the effective "used" total per bucket,
@@ -478,6 +489,45 @@ function getEmployeeLeaveInfo($employeeID, $asOfDate = null) {
 }
 
 /**
+ * legacyLeaveDays($employeeID, $source, $bucket, $year)
+ *
+ * Used-leave days the old BITAC software holds for one employee, as of the
+ * last "পুরনো সিস্টেম সিঙ্ক" (legacy_leave_totals, filled by api/legacy/sync.php).
+ *
+ * @param string $source 'prev' | 'application' | 'deduction'
+ * @param int    $bucket the leave_deduction_history code: 1 পূর্ণ গড়, 2 অর্ধ-গড়
+ *                       (actual days), 3 নৈমিত্তিক, 4 বিনা বেতনে, 5 ঐচ্ছিক,
+ *                       6 অ-কর্তনযোগ্য, 10 অসাধারণ
+ * @param int    $year   calendar year for 3 and 5; 0 for the rest
+ * @return int           0 before the migration has run or anything has synced
+ */
+function legacyLeaveDays($employeeID, $source, $bucket, $year = 0) {
+    global $con;
+    static $hasTable = null, $byEmployee = [];
+
+    if ($hasTable === null) {
+        $t = mysqli_query($con, "SHOW TABLES LIKE 'legacy_leave_totals'");
+        $hasTable = $t && mysqli_num_rows($t) > 0;
+    }
+    if (!$hasTable) return 0;
+
+    $emp = (int)$employeeID;
+    if (!isset($byEmployee[$emp])) {
+        $byEmployee[$emp] = [];
+        $res = mysqli_query($con, "SELECT source, bucket, year, days FROM legacy_leave_totals WHERE employee_id = $emp");
+        while ($res && $r = mysqli_fetch_assoc($res)) {
+            $byEmployee[$emp]["{$r['source']}:{$r['bucket']}:{$r['year']}"] = (int)$r['days'];
+        }
+    }
+    return $byEmployee[$emp][$source . ':' . (int)$bucket . ':' . (int)$year] ?? 0;
+}
+
+/** previous_leave_deduction column ↔ legacy bucket, for adding legacy 'prev' days to a prev row. */
+function legacyPrevColumns() {
+    return ['avgSalary' => 1, 'halfAvgSalary' => 2, 'leaveWithoutPay' => 4, 'undeductibleLeave' => 6, 'extraOrdinaryLeave' => 10];
+}
+
+/**
  * casualLeaveOverdraw($employeeID, $segments, $excludeAppID)
  *
  * The yearly নৈমিত্তিক allowance has to cover what is already approved AND
@@ -526,7 +576,10 @@ function casualLeaveOverdraw($employeeID, array $segments, $excludeAppID = 0) {
              WHERE employeeID = '$emp' AND leaveID = '3' AND isApproved = 1
                AND createDate BETWEEN '$start' AND '$end'"))['v'] ?? 0);
 
-        $approved  = max(0, (int)$r['approved'] + $deducted - $added);
+        // Approved in the old system counts as approved here
+        $approved  = max(0, (int)$r['approved'] + $deducted - $added
+                          + legacyLeaveDays($emp, 'application', 3, $year)
+                          + legacyLeaveDays($emp, 'deduction', 3, $year));
         $pending   = (int)$r['pending'];
         $remaining = max(0, $casualBalance - $approved - $pending);
 

@@ -153,6 +153,11 @@ if ($optionalDaysRequested > 0) {
              WHERE employeeID = '$employeeID' AND leaveID = 5 AND isApproved = 1
                AND YEAR(createDate) IN ($yearsList)");
         $spentDed = (float)(mysqli_fetch_assoc($spentDedQ)['s'] ?? 0);
+        // ঐচ্ছিক already taken in the old system those years
+        foreach (array_unique($optionalYearsRequested) as $y) {
+            $spentApps += legacyLeaveDays($employeeID, 'application', 5, $y);
+            $spentDed  += legacyLeaveDays($employeeID, 'deduction', 5, $y);
+        }
         $availableOptional = $approvedCredit - ($spentApps + $spentDed);
 
         if ($availableOptional < $optionalDaysRequested) {
@@ -371,6 +376,23 @@ if(in_array($file_ext,$extensions)== false){
 								// end of optional leave
 
 
+								// old BITAC software: each figure joins the matching term above
+								$legacyYear = (int)substr($casualStart, 0, 4);
+								$getPrevLeaveHistoryRW = $getPrevLeaveHistoryRW ?: [];
+								foreach (legacyPrevColumns() as $col => $bucket) {
+									$getPrevLeaveHistoryRW[$col] = ($getPrevLeaveHistoryRW[$col] ?? 0) + legacyLeaveDays($employeeID, 'prev', $bucket);
+								}
+								$calculateFullAvgQRW['totalFullLDeduction']  += legacyLeaveDays($employeeID, 'deduction', 1);
+								$calculateHalfAvgQRW['totalLHalfDeduction']  += legacyLeaveDays($employeeID, 'deduction', 2);
+								$calculateCLAvgQRW['totalCLDeduction']       += legacyLeaveDays($employeeID, 'deduction', 3, $legacyYear);
+								$optionalLHistoryQRW['totalOLDeduction']     += legacyLeaveDays($employeeID, 'deduction', 5, $legacyYear);
+								$calculateWPAvgQRW['totalWPDeduction']       += legacyLeaveDays($employeeID, 'deduction', 4);
+								$calculateExOrLManualQRW['totalExODeduction'] += legacyLeaveDays($employeeID, 'deduction', 10);
+								$getTotalLWioutPayLeaveInCurrentYearQRW['totalLWithoutPay']   += legacyLeaveDays($employeeID, 'application', 4);
+								$getTotalLExtraOrdinaryLeaveInCurrentYearQRW['totalExorLeave'] += legacyLeaveDays($employeeID, 'application', 10);
+								$getTotalLCasualLeaveInCurrentYearQRW['totalLCasualSpent']    += legacyLeaveDays($employeeID, 'application', 3, $legacyYear);
+								$getTotalOptionalLeaveQRW['totalOLSpent']                     += legacyLeaveDays($employeeID, 'application', 5, $legacyYear);
+
 								// total without pay to display
 
 								$totalWithoutPay = ($getTotalLWioutPayLeaveInCurrentYearQRW['totalLWithoutPay'] + $getPrevLeaveHistoryRW['leaveWithoutPay'] + $calculateWPAvgQRW['totalWPDeduction']);
@@ -428,6 +450,7 @@ if(in_array($file_ext,$extensions)== false){
 								// get voghkrito chuti
 								$getTotalfullAvgSalLeaveUsedQ = mysqli_query($con, "select sum(approvedDays) as totalAvgSal from leave_applications where status=1 and applicantID='$employeeID' and leaveTypeInTwo='1'");
 								$getTotalfullAvgSalLeaveUsedQRW = mysqli_fetch_assoc($getTotalfullAvgSalLeaveUsedQ);
+								$getTotalfullAvgSalLeaveUsedQRW['totalAvgSal'] += legacyLeaveDays($employeeID, 'application', 1);
 
 								$totalAvgSalVugkrito = $getPrevLeaveHistoryRW['avgSalary'] + $getTotalfullAvgSalLeaveUsedQRW['totalAvgSal'] + $calculateFullAvgQRW['totalFullLDeduction'];
 
@@ -469,6 +492,7 @@ if(in_array($file_ext,$extensions)== false){
 								// get voghkrito chuti
 								$getTotalhalfAvgSalLeaveUsedQ = mysqli_query($con, "select sum(approvedDays)*2 as totalHalfAvgSal from leave_applications where status=1 and applicantID='$employeeID' and leaveTypeInTwo='2'");
 								$getTotalhalfAvgSalLeaveUsedQRW = mysqli_fetch_assoc($getTotalhalfAvgSalLeaveUsedQ);
+								$getTotalhalfAvgSalLeaveUsedQRW['totalHalfAvgSal'] += legacyLeaveDays($employeeID, 'application', 2) * 2; // doubled like the query
 
 								$totalHalfAvgSalVugkrito = $getPrevLeaveHistoryRW['halfAvgSalary'] + $getTotalhalfAvgSalLeaveUsedQRW['totalHalfAvgSal'] + $calculateHalfAvgQRW['totalLHalfDeduction'];
 

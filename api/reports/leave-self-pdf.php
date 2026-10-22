@@ -143,6 +143,19 @@ function generatePDFData($employeeID, $leaveTypeInTwo, $year) {
         $getTotalLCasualQRW   = ['totalLCasualSpent' => $segSpent($employeeID, 8)];
         $getTotalOptionalQRW  = ['totalOLSpent' => $segSpent($employeeID, 7)];
 
+        // Old BITAC software: each figure joins the matching term
+        // (নৈমিত্তিক/ঐচ্ছিক come from getEmployeeLeaveInfo, which adds its own.)
+        $getPrevLeaveHistoryRW = $getPrevLeaveHistoryRW ?: [];
+        foreach (legacyPrevColumns() as $col => $bucket) {
+            $getPrevLeaveHistoryRW[$col] = ($getPrevLeaveHistoryRW[$col] ?? 0) + legacyLeaveDays($employeeID, 'prev', $bucket);
+        }
+        $calculateFullAvgQRW['totalFullLDeduction']  += legacyLeaveDays($employeeID, 'deduction', 1);
+        $calculateHalfAvgQRW['totalLHalfDeduction']  += legacyLeaveDays($employeeID, 'deduction', 2);
+        $calculateWPAvgQRW['totalWPDeduction']       += legacyLeaveDays($employeeID, 'deduction', 4);
+        $getTotalLWioutPayQRW['totalLWithoutPay']    += legacyLeaveDays($employeeID, 'application', 4);
+        $legacyFullApps = legacyLeaveDays($employeeID, 'application', 1);
+        $legacyHalfApps = legacyLeaveDays($employeeID, 'application', 2) * 2;  // ×2 like the segment sum
+
         $totalWithoutPay       = ($getTotalLWioutPayQRW['totalLWithoutPay'] + $getPrevLeaveHistoryRW['leaveWithoutPay'] + $calculateWPAvgQRW['totalWPDeduction']);
         $totalWithoutPayyears  = floor($totalWithoutPay / 365);
         $totalWithoutPaymonths = floor(($totalWithoutPay - ($totalWithoutPayyears * 365)) / 30);
@@ -157,7 +170,7 @@ function generatePDFData($employeeID, $leaveTypeInTwo, $year) {
         $fullAvgSalLeavemonths = floor(($fullAvgSalLeave - ($fullAvgSalLeaveyears * 365)) / 30);
         $fullAvgSalLeavedays   = round($fullAvgSalLeave - ($fullAvgSalLeaveyears * 365) - ($fullAvgSalLeavemonths * 30));
 
-        $getTotalfullAvgQRW = ['totalAvgSal' => $segSpent($employeeID, 1)]; // পূর্ণ গড়
+        $getTotalfullAvgQRW = ['totalAvgSal' => $segSpent($employeeID, 1) + $legacyFullApps]; // পূর্ণ গড়
         $totalAvgSalVugkrito       = $getPrevLeaveHistoryRW['avgSalary'] + $getTotalfullAvgQRW['totalAvgSal'] + $calculateFullAvgQRW['totalFullLDeduction'];
         $fullAvgVugkritoSalLeaveyears   = floor($totalAvgSalVugkrito / 365);
         $fullAvgVugkritoSalLeavemonths  = floor(($totalAvgSalVugkrito - ($fullAvgVugkritoSalLeaveyears * 365)) / 30);
@@ -172,7 +185,7 @@ function generatePDFData($employeeID, $leaveTypeInTwo, $year) {
         $halfAvgSalLeavemonths = floor(($halfAvgSalLeave - ($halfAvgSalLeaveyears * 365)) / 30);
         $halfAvgSalLeavedays   = round($halfAvgSalLeave - ($halfAvgSalLeaveyears * 365) - ($halfAvgSalLeavemonths * 30));
 
-        $getTotalhalfAvgQRW = ['totalHalfAvgSal' => $segSpent($employeeID, 2, false, 2)]; // অর্ধ-গড় ×2
+        $getTotalhalfAvgQRW = ['totalHalfAvgSal' => $segSpent($employeeID, 2, false, 2) + $legacyHalfApps]; // অর্ধ-গড় ×2
         $totalHalfAvgSalVugkrito       = $getPrevLeaveHistoryRW['halfAvgSalary'] + $getTotalhalfAvgQRW['totalHalfAvgSal'] + $calculateHalfAvgQRW['totalLHalfDeduction'];
         $halfAvgVugkritoSalLeaveyears  = floor($totalHalfAvgSalVugkrito / 365);
         $halfAvgVugkritoSalLeavemonths = floor(($totalHalfAvgSalVugkrito - ($halfAvgVugkritoSalLeaveyears * 365)) / 30);
@@ -182,8 +195,8 @@ function generatePDFData($employeeID, $leaveTypeInTwo, $year) {
         $halfAvgRestSalLeavemonths = floor(($restHalfAvgSalLeave - ($halfAvgRestSalLeaveyears * 365)) / 30);
         $halfAvgRestSalLeavedays   = round($restHalfAvgSalLeave - ($halfAvgRestSalLeaveyears * 365) - ($halfAvgRestSalLeavemonths * 30));
 
-        $getTotalOrjitoFullQRW = ['totalOrjitofull' => $segSpent($employeeID, 1)]; // পূর্ণ গড়
-        $getTotalOrjitoHalfQRW = ['totalOrjitohalf' => $segSpent($employeeID, 2, false, 2)]; // অর্ধ-গড় ×2
+        $getTotalOrjitoFullQRW = ['totalOrjitofull' => $segSpent($employeeID, 1) + $legacyFullApps]; // পূর্ণ গড়
+        $getTotalOrjitoHalfQRW = ['totalOrjitohalf' => $segSpent($employeeID, 2, false, 2) + $legacyHalfApps]; // অর্ধ-গড় ×2
         $totalOrjito = $getTotalOrjitoFullQRW['totalOrjitofull'] + $getTotalOrjitoHalfQRW['totalOrjitohalf'];
         $totalIorjitobugkritoyears  = floor($totalOrjito / 365);
         $totalIorjitobugkritomonths = floor(($totalOrjito - ($totalIorjitobugkritoyears * 365)) / 30);

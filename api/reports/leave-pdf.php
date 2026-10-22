@@ -137,6 +137,23 @@ function generatePDFData($employeeID, $leaveTypeInTwo, $year) {
         $exSpent   = $segSpent($employeeID, 10);                              // অসাধারণ
         $unSpent   = $segSpent($employeeID, 5) + $segSpent($employeeID, 6) + $segSpent($employeeID, 19); // কর্তনহীন
 
+        // ── Old BITAC software: each figure joins the matching term above ───
+        // (নৈমিত্তিক/ঐচ্ছিক come from getEmployeeLeaveInfo, which adds its own.)
+        $prev = $prev ?: [];
+        foreach (legacyPrevColumns() as $col => $bucket) {
+            $prev[$col] = ($prev[$col] ?? 0) + legacyLeaveDays($employeeID, 'prev', $bucket);
+        }
+        $fullDed   += legacyLeaveDays($employeeID, 'deduction', 1);
+        $halfDed   += legacyLeaveDays($employeeID, 'deduction', 2);
+        $wpDed     += legacyLeaveDays($employeeID, 'deduction', 4);
+        $exDed     += legacyLeaveDays($employeeID, 'deduction', 10);
+        $unDed     += legacyLeaveDays($employeeID, 'deduction', 6);
+        $fullSpent += legacyLeaveDays($employeeID, 'application', 1);
+        $halfSpent += legacyLeaveDays($employeeID, 'application', 2) * 2;  // ×2 like the segment sum
+        $wpSpent   += legacyLeaveDays($employeeID, 'application', 4);
+        $exSpent   += legacyLeaveDays($employeeID, 'application', 10);
+        $unSpent   += legacyLeaveDays($employeeID, 'application', 6);
+
         // ── Employment duration — single source of truth: getEmployeeLeaveInfo ─
         $_li = getEmployeeLeaveInfo($employeeID);
         $empYears  = $_li['employment']['years'];
